@@ -11,14 +11,15 @@ import java.util.*;
 import java.util.concurrent.locks.*;
 
 
-public class echoSV_tcp {
+public class HttpGw {
 	public static int port = 8080;
 	public static int backlog = 50;
+	public static String ip;
 
     public static void main(String[] args) {
 		try {
 	        //InetAddress addr =InetAddress.getByName("10.1.1.1");
-	        String ip = myip();
+	        ip = myip();
 			InetAddress addr2 = InetAddress.getByName(ip);
 			System.out.println("IP in use: " + ip);
 			System.out.println("Port in use: " + port);
@@ -36,6 +37,8 @@ public class echoSV_tcp {
             System.out.println("BBBBBB");
         }
     }
+
+
 
     public static String myip(){
     	String ip = new String();
@@ -64,6 +67,10 @@ public class echoSV_tcp {
         return null;
     }
 }
+
+
+
+
 
 
 class Session2 extends Thread{

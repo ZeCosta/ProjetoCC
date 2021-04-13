@@ -3,10 +3,15 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.NetworkInterface;
+import java.net.*;
+import java.util.*;
+import java.util.concurrent.locks.*;
 
 public class echoSV_udp{
 	// Server UDP socket runs at this port
 	public final static int SERVICE_PORT=8888;
+  	public static String myIP;
 
 	public static void main(String[] args){
 		DatagramSocket socket;
@@ -14,7 +19,10 @@ public class echoSV_udp{
 
         try{
         	//DatagramSocket(int port, InetAddress laddr)
-	        InetAddress addr =InetAddress.getByName("localhost");
+        	myIP = myip();
+      		System.out.println("My ip: "+ myIP);
+
+	        InetAddress addr =InetAddress.getByName(myIP);
 			socket = new DatagramSocket(SERVICE_PORT,addr);
 
 			running = true;
@@ -55,4 +63,31 @@ public class echoSV_udp{
             System.out.println("BBBBBB");
         }
 	}
+
+	public static String myip(){
+    	String ip = new String();
+        try{
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface iface = interfaces.nextElement();
+                // filters out 127.0.0.1 and inactive interfaces
+                if (iface.isLoopback() || !iface.isUp())
+                    continue;
+
+                Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while(addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    ip = addr.getHostAddress();
+                    //System.out.println(iface.getDisplayName() + " " + ip);
+                }
+            }
+            //System.out.println(ip);
+            return ip;
+            
+
+        } catch (Exception e) {
+            System.out.println("Erro");
+        }
+        return null;
+    }
 }
