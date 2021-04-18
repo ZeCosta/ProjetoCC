@@ -10,32 +10,36 @@ import java.net.*;
 import java.util.*;
 import java.util.concurrent.locks.*;
 
+//	ToDo:
+//create controller class -> with udp socket, id of task (with lock) map of objects to save the bytes (each with locks)
+//parse http request
+//...
 
 public class HttpGw {
-	public static int port = 8080;
+	public static int udpport=8888;
+
+	public static int tcpport = 8080;
 	public static int backlog = 50;
-	public static String ip;
 
     public static void main(String[] args) {
-		try {
-	        //InetAddress addr =InetAddress.getByName("10.1.1.1");
-	        ip = myip();
-			InetAddress addr2 = InetAddress.getByName(ip);
-			System.out.println("IP in use: " + ip);
-			System.out.println("Port in use: " + port);
-			System.out.println("Backlog: " + backlog);
-	        try {
-	        	ServerSocket ss = new ServerSocket(port,backlog,addr2);
-	            while (true) {
-	                Socket socket = ss.accept();
-	                new Session2(socket).start();  
-	            }
-	        } catch (IOException e) {
-	            e.printStackTrace();
-	        }
-        }catch(Exception e){
-            System.out.println("BBBBBB");
+    	try{
+    		//get machine's ip
+    		String ip = myip();
+
+    		//translate ip into InetAddress object and create the udp socket
+    		InetAddress addr =InetAddress.getByName(ip);
+			DatagramSocket udpsocket = new DatagramSocket(udpport,addr);
+
+
+
+
+
+
+    		new ParserTCP(tcpport,backlog,addr).start();
+    	}catch (Exception e) {
+            System.out.println("Erro");
         }
+		
     }
 
 
@@ -57,7 +61,7 @@ public class HttpGw {
                     //System.out.println(iface.getDisplayName() + " " + ip);
                 }
             }
-            //System.out.println(ip);
+            System.out.println(ip);
             return ip;
             
 
@@ -68,15 +72,92 @@ public class HttpGw {
     }
 }
 
+class ReceiverUDP extends Thread{
+	DatagramSocket socket;
+
+	ReceiverUDP(DatagramSocket s){
+		this.socket=s;
+	}
+
+
+	public void run(){
+		boolean running;
+
+	    try{
+			running = true;
+		    while (running) {
+		    	byte[] buf = new byte[256];
+		        DatagramPacket packet = new DatagramPacket(buf, buf.length);
+		        socket.receive(packet);
+		        
+		        InetAddress address = packet.getAddress();
+		        int port = packet.getPort();
+		        packet = new DatagramPacket(buf, buf.length, address, port);
+		        
+		        System.out.println(packet.getData());
+		        System.out.println(packet.getLength());
+		        System.out.println();
+		        String received = new String(packet.getData(), 0, packet.getLength());
+		        
+		        /*
+			        //String teste = "end";
+			        System.out.println(received + "!");
+			        System.out.println(received.equals("end"));
+			        //System.out.println(teste.equals("end"));
+			        if (received.equals("end")) {
+			            running = false;
+			            System.out.println("AAAAAAA");
+			            continue;
+			        }
+		        */
+
+		        socket.send(packet);
+	            System.out.println();
+	            System.out.println();
+	            System.out.println();
+		    }
+		    socket.close();
+	    
+	    }catch(Exception e){
+	        System.out.println("BBBBBB");
+	    }
+	}
+}
 
 
 
+class ParserTCP extends Thread{
+	int tcpport = 8080;
+	int backlog = 50;
+	String ip;
+	InetAddress addr;
+
+	ParserTCP(int port, int b_log, InetAddress addr_ip){
+		this.tcpport=port;
+		this.backlog=b_log;
+		this.addr=addr_ip;
+	}
 
 
-class Session2 extends Thread{
+	public void run(){
+        try {
+        	ServerSocket ss = new ServerSocket(tcpport,backlog,addr);
+            while (true) {
+                Socket socket = ss.accept();
+                new SessionTCP(socket).start();  
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+	}
+}
+
+
+
+class SessionTCP extends Thread{
 	Socket socket;
 
-	Session2(Socket socket){
+	SessionTCP(Socket socket){
 		this.socket=socket;
 	}
 
@@ -107,6 +188,5 @@ class Session2 extends Thread{
 		}catch(IOException e){
             e.printStackTrace();			
 		}
-
 	}
 }
