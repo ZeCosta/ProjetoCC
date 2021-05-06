@@ -1,0 +1,20 @@
+;
+; BIND reverse data file for local loopback interface
+;
+$TTL	604800
+@	IN	SOA	ns.cc.pt. PL05G14.cc.pt. (
+			      2		; Serial
+			 604800		; Refresh
+			  86400		; Retry
+			2419200		; Expire
+			 604800 )	; Negative Cache TTL
+
+;NS
+@	IN      NS      ns.cc.pt.
+@	IN      NS      ns2.cc.pt.
+
+; PTR Records
+;Laptop1
+1	IN	PTR	Laptop1.cc.pt.
+1	IN	PTR	g14.cc.pt	
+

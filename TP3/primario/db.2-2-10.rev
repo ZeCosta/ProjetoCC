@@ -1,0 +1,25 @@
+;
+; BIND reverse data file for local loopback interface
+;
+$TTL	604800
+@	IN	SOA	ns.cc.pt. PL05G14.cc.pt. (
+			      2		; Serial
+			 604800		; Refresh
+			  86400		; Retry
+			2419200		; Expire
+			 604800 )	; Negative Cache TTL
+
+;NS
+@	IN      NS      ns.cc.pt.
+@	IN      NS      ns2.cc.pt.
+
+; PTR Records
+;Mercurio
+2	IN	PTR	ns2.cc.pt.
+2	IN	PTR	Mercurio.cc.pt	
+
+;Marte
+1	IN	PTR	Marte.cc.pt.
+
+;SV3
+3	IN	PTR	Venus.cc.pt.
