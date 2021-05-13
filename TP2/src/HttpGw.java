@@ -9,6 +9,8 @@ import java.net.NetworkInterface;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.locks.*;
+import java.io.ObjectInputStream;
+import java.io.ByteArrayInputStream;
 
 //	ToDo:
 //create controller class -> with udp socket, id of task (with lock) map of objects to save the bytes (each with locks)
@@ -30,12 +32,15 @@ public class HttpGw {
     		InetAddress addr =InetAddress.getByName(ip);
 			DatagramSocket udpsocket = new DatagramSocket(udpport,addr);
 
+			CoordinatorHttpGw coord = new CoordinatorHttpGw(udpsocket);
 
 
 
 
+    		//new ParserTCP(tcpport,backlog,addr).start();
+    		new ParserTCP(addr,coord).start();
 
-    		new ParserTCP(tcpport,backlog,addr).start();
+    		new ReceiverUDP(coord).start();
     	}catch (Exception e) {
             System.out.println("Erro");
         }
@@ -74,18 +79,24 @@ public class HttpGw {
 
 class ReceiverUDP extends Thread{
 	DatagramSocket socket;
-
+	String pass = new String("ola");		//For now its a fixed password -> maybe use an encryption related to a key/ip of the origin
+	CoordinatorHttpGw coord;
 	ReceiverUDP(DatagramSocket s){
 		this.socket=s;
+	}
+	ReceiverUDP(CoordinatorHttpGw c){
+		this.coord=c;
 	}
 
 
 	public void run(){
 		boolean running;
+		this.socket=this.coord.getSocket();
 
 	    try{
 			running = true;
 		    while (running) {
+		    	System.out.println("Waiting for packet");
 		    	byte[] buf = new byte[256];
 		        DatagramPacket packet = new DatagramPacket(buf, buf.length);
 		        socket.receive(packet);
@@ -94,11 +105,36 @@ class ReceiverUDP extends Thread{
 		        int port = packet.getPort();
 		        packet = new DatagramPacket(buf, buf.length, address, port);
 		        
-		        System.out.println(packet.getData());
-		        System.out.println(packet.getLength());
-		        System.out.println();
-		        String received = new String(packet.getData(), 0, packet.getLength());
-		        
+		    	System.out.println("Recieved packet");
+
+		    	ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(buf));
+				PacketUDP p1 = (PacketUDP) in.readObject();
+				in.close();
+
+		        /*
+		        	System.out.println(p1);
+		        	System.out.println(p1.getPackettype());
+		        	System.out.println(p1.getPacketid());
+		        	System.out.println(p1.getChunkid());
+		        	System.out.println(p1.getChunk() + "->" + arr);
+		        	System.out.println(arr + "==" + pass + "? " + arr.equals(pass));
+		        	System.out.println();
+		       	*/
+
+		        //	Handle the PacketUDP
+		        if(p1.getPackettype()==1){
+		        	System.out.println("->Subscribe");
+		        	String arr = new String(p1.getChunk());
+		        	if(arr.equals(pass)){
+		        		System.out.println("\tPassword "+arr+" accepted");
+		        		this.coord.addServer(address,port);
+		        		System.out.println(this.coord.getTableSize());
+		        	}
+		        	else{
+		        		System.out.println("\tPassword "+arr+" wrong");
+
+		        	}
+		        }else System.out.println("->PacketUDP type not recognised");
 		        /*
 			        //String teste = "end";
 			        System.out.println(received + "!");
@@ -111,15 +147,16 @@ class ReceiverUDP extends Thread{
 			        }
 		        */
 
-		        socket.send(packet);
-	            System.out.println();
-	            System.out.println();
+				// Remove this send
+		        coord.sendPacketRandomFFS(p1);
+		        //socket.send(packet);
 	            System.out.println();
 		    }
 		    socket.close();
 	    
 	    }catch(Exception e){
-	        System.out.println("BBBBBB");
+	        System.out.println("ReceiverUDP error");
+            e.printStackTrace();
 	    }
 	}
 }
@@ -131,11 +168,16 @@ class ParserTCP extends Thread{
 	int backlog = 50;
 	String ip;
 	InetAddress addr;
+	CoordinatorHttpGw coord;
 
 	ParserTCP(int port, int b_log, InetAddress addr_ip){
 		this.tcpport=port;
 		this.backlog=b_log;
 		this.addr=addr_ip;
+	}
+	ParserTCP(InetAddress addr_ip, CoordinatorHttpGw c){
+		this.addr=addr_ip;
+		this.coord=c;
 	}
 
 
@@ -144,7 +186,7 @@ class ParserTCP extends Thread{
         	ServerSocket ss = new ServerSocket(tcpport,backlog,addr);
             while (true) {
                 Socket socket = ss.accept();
-                new SessionTCP(socket).start();  
+                new SessionTCP(socket,coord).start();  
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -156,9 +198,14 @@ class ParserTCP extends Thread{
 
 class SessionTCP extends Thread{
 	Socket socket;
+	CoordinatorHttpGw coord;
 
 	SessionTCP(Socket socket){
 		this.socket=socket;
+	}
+	SessionTCP(Socket socket, CoordinatorHttpGw c){
+		this.socket=socket;
+		this.coord=c;
 	}
 
 	public void run(){
@@ -167,18 +214,29 @@ class SessionTCP extends Thread{
 			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 	        PrintWriter out = new PrintWriter(socket.getOutputStream());
 
+
 	        String line;
 	        int i=0;
-	        while ((line = in.readLine()) != null) {
-	        		System.out.println(i+": "+line);
+
+	        line = in.readLine();
+	        while (line != null && line.length()>0) {
+	        	System.out.println(i+": "+line);
 	            	
-	                out.println("linha "+i);
-	                out.flush();
-	                i+=1;
+	            //out.println("linha "+i);
+	            //out.flush();
+	            i+=1;
+	        	line = in.readLine();
 	        	
 	        }
+	        System.out.println("TCPSession end");
 
+	        String str = new String("Packet sent by session sent");
+	        PacketUDP p1 = new PacketUDP(1,0,0,str.getBytes());
+	        coord.sendPacketRandomFFS(p1);
 
+ 			
+ 			out.println("linha "+i);
+	        System.out.println("aaa");
 	        out.flush();
 
 	        socket.shutdownOutput();
@@ -186,7 +244,7 @@ class SessionTCP extends Thread{
 	        socket.close();
 
 		}catch(IOException e){
-            e.printStackTrace();			
+			e.printStackTrace();
 		}
 	}
 }
