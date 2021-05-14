@@ -21,7 +21,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 
 public class CoordinatorHttpGw {
-	ReentrantLock socketLock = new ReentrantLock();
+	ReentrantLock socketWriteLock = new ReentrantLock();
 	DatagramSocket socket;
 
 	//reentrant lock for table manage
@@ -46,7 +46,7 @@ public class CoordinatorHttpGw {
 	}
 
 	public void sendPacket(PacketUDP p1, InetAddress ipAddress, int port){
-		this.socketLock.lock();
+		this.socketWriteLock.lock();
 		try{
 			byte[] sendingDataBuffer = new byte[1024];
 
@@ -59,12 +59,12 @@ public class CoordinatorHttpGw {
 			this.socket.send(sendingPacket);
 		}
 		catch(Exception e){
-			this.socketLock.unlock();
+			this.socketWriteLock.unlock();
 			System.out.println("Error Sending packet");
 			e.printStackTrace();
 		}
 		finally{
-			this.socketLock.unlock();
+			this.socketWriteLock.unlock();
 		}
 	}
 
