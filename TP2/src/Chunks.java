@@ -8,12 +8,18 @@ public class Chunks {
 	int fileSize;			//-> if its -1 it means the file does not exist
 	//list/map of chunks 	-> If list/map size is size of file/size of chunks then its all there. alternatively Chunk can be a class with a boolean
 
-	public Chunks(){
-
+	public Chunks(String fn, int fs){
+		this.fileName=fn;
+		this.fileSize=fs; 
 	}
 
 	public void addChunk(){
 
+	}
+
+
+	public int getSize(){
+		return this.fileSize;
 	}
 
 }

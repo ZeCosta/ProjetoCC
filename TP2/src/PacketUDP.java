@@ -1,12 +1,15 @@
 import java.io.Serializable;
 
 
+// Size of the packet should be <= 512bytes so it's not fragmented
+// after some tests we discovered that the byte array should have 400bytes tops
 
 public class PacketUDP implements Serializable{ 
-	private int packettype; //1-Subscribe|2-Unsubscribe|3-Size|4-Chunk
-	private int packetid;  //Se for um chunk vai ter de ter id
-	private int chunkid;  //Se for um chunk vai ter de ter identificacao do chunk
-	private byte[] chunk;
+	private int packettype;	//1-Subscribe|2-Unsubscribe|3-Size|4-Chunk
+	private int packetid;	//ID do packet = ID da sessão TCP -> Necessário para guardar o Chunk no sitio certo no map
+	private int chunkid;	//Se for um chunk vai ter de ter identificacao do chunk
+							//Se for um pedido de size vai ter o tamanho do ficheiro -> -1 se mão existe
+	private byte[] chunk;	//Chunk ou FileName(String)
 
 	public PacketUDP(){
 		this.packettype=-1;

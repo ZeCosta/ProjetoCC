@@ -16,18 +16,23 @@ import java.io.ObjectInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectOutputStream;
+import java.lang.StringBuilder;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public class FastFileServer{
-  public final static int port = 8888;
+  public static int port = 8888;
   public static String serverIP;
   public static String myIP;
+
+  public static String password;
+  //public static String passKey;
   
   public static void main(String[] args) throws IOException{
     try{
-      
-
 		myIP=myip();
-		System.out.println("My ip: "+ myIP);
+		System.out.println("My ip:   "+ myIP);
+		System.out.println("My port: "+ port);
 
 
 		DatagramSocket ffsSocket = new DatagramSocket();
@@ -43,10 +48,20 @@ public class FastFileServer{
 		byte[] sendingDataBuffer = new byte[1024];
 		byte[] receivingDataBuffer = new byte[1024];
 
-		String userInput;
-		userInput = systemIn.readLine();
 
-		PacketUDP p1 = new PacketUDP(1,0,0,userInput.getBytes());
+		StringBuilder sb = new StringBuilder();
+		sb.append("Subscribe");
+		sb.append(myIP);
+		//sb.append(":").append(port);
+		password = new String(sb);
+		//System.out.println(password);
+		
+		//hash!!!
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		byte[] hash = digest.digest(password.getBytes());
+
+
+		PacketUDP p1 = new PacketUDP(1,0,0,hash);
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
    		ObjectOutputStream os = new ObjectOutputStream(out);		
    		os.writeObject(p1);
@@ -55,9 +70,17 @@ public class FastFileServer{
 		DatagramPacket sendingPacket = new DatagramPacket(sendingDataBuffer,sendingDataBuffer.length,ipAddress, port);
 		ffsSocket.send(sendingPacket);
 
-		System.out.println("Package sent");
+		System.out.println("Package Subscribe Sent");
 
-
+		/*
+			//tests for byte arrray length
+			p1 = new PacketUDP(50,30,0,new byte[400]);
+			out = new ByteArrayOutputStream();
+	   		os = new ObjectOutputStream(out);		
+	   		os.writeObject(p1);
+			sendingDataBuffer = out.toByteArray();
+			System.out.println(sendingDataBuffer + " -> " +sendingDataBuffer.length);
+		*/
 
 		Boolean running = true;
 		while (running) {
@@ -81,6 +104,26 @@ public class FastFileServer{
 
 				String arr = new String(p2.getChunk());
 				System.out.println(arr);
+
+				if(receivingPacket.getAddress().equals(ipAddress)){
+					if(p2.getPackettype()==3){
+						System.out.println("Send filesize");
+						int filesize=5;
+						p2.setChunkid(filesize);
+						
+						out = new ByteArrayOutputStream();
+				   		os = new ObjectOutputStream(out);		
+				   		os.writeObject(p2);
+						sendingDataBuffer = out.toByteArray();
+
+						sendingPacket = new DatagramPacket(sendingDataBuffer,sendingDataBuffer.length,ipAddress, port);
+						ffsSocket.send(sendingPacket);
+						System.out.println("Package Sent");	
+					}else if(p2.getPackettype()==4){
+						System.out.println("Send chunk");
+					}else System.out.println("Ignoring packet!");
+
+				}else System.out.println("Not the HttpGw");
 			}catch(Exception e){
 				System.out.println(e);
 			}
@@ -91,6 +134,9 @@ public class FastFileServer{
 		ffsSocket.close();
     }
     catch(SocketException e) {
+      e.printStackTrace();
+    }
+    catch(NoSuchAlgorithmException e) {
       e.printStackTrace();
     }
   }

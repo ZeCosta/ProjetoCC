@@ -1,8 +1,11 @@
 import java.net.InetAddress;
+import java.util.Set;
+import java.util.HashSet;
 
 public class FFSInfo {
 	InetAddress ip;
 	int port;
+	//HashSet<String> files = new HashSet<String>();
 
 	public FFSInfo(InetAddress i, int p){
 		this.ip=i;
@@ -21,5 +24,9 @@ public class FFSInfo {
 	}
 	public void getPort(int p){
 		this.port=p;
+	}
+
+	public boolean equals(FFSInfo f){
+		return this.getIp().equals(f.getIp());// && this.getPort()==f.getPort();
 	}
 }

@@ -26,7 +26,13 @@ public class CoordinatorHttpGw {
 
 	//reentrant lock for table manage
 	HashMap<Integer, FFSInfo> ffsTable = new HashMap<Integer, FFSInfo>();
-	int tablekey=0;
+
+	int tablekey=0; //number of FFServers
+	
+	ReentrantLock requestIDLock = new ReentrantLock();
+	int requestID=0;	//number of the request -> key for the chunks map/list
+
+	HashMap<Integer, Chunks> chunks = new HashMap<Integer, Chunks>();
 
 	public CoordinatorHttpGw(DatagramSocket s){
 		this.socket=s;
@@ -68,15 +74,70 @@ public class CoordinatorHttpGw {
 		}
 	}
 
-	public void sendPacketRandomFFS(PacketUDP p1){
+	public void sendPacketRandomFFS(PacketUDP p1) throws IllegalArgumentException{
 		FFSInfo svinfo = this.getRandomFFSInfo();
 		this.sendPacket(p1, svinfo.getIp(), svinfo.getPort());
 	}
-	public FFSInfo getRandomFFSInfo(){
-		Random rand = new Random();
-		int n = rand.nextInt(this.tablekey);
-		System.out.println("Random is "+n);
-		return this.ffsTable.get(n);
+	public FFSInfo getRandomFFSInfo() throws IllegalArgumentException{
+		try{
+			Random rand = new Random();
+			int n = rand.nextInt(this.tablekey);
+			System.out.println("Random is "+n);
+			return this.ffsTable.get(n);
+		}
+		catch(IllegalArgumentException e){
+			throw e;
+		}
 	}
 
+	public void sendPacketFFS(PacketUDP p1, int index) throws IllegalArgumentException{
+		try{
+			FFSInfo svinfo = this.ffsTable.get(index);
+			this.sendPacket(p1, svinfo.getIp(), svinfo.getPort());
+		}
+		catch(IllegalArgumentException e){
+			throw e;
+		}
+	}
+
+
+	public int getRequestID(){
+		this.requestIDLock.lock();
+		try{
+			return this.requestID;
+		}
+		finally{
+			this.requestID+=1;
+			this.requestIDLock.unlock();
+		}
+	}
+
+
+
+	public void addChunks(int reqID, Chunks c){
+		this.chunks.put(reqID,c);
+	}
+	public Chunks getChunks(int reqID){
+		return this.chunks.get(reqID);
+	}
+	public void removeChunks(int reqID){
+		this.chunks.remove(reqID);
+	}
+
+	public int getChunksSize(int reqID){
+		if(this.chunks.get(reqID)!=null)
+			return this.chunks.get(reqID).getSize();
+		return 0;
+	}
+
+
+
+	public boolean FFSExists(InetAddress i, int p){
+		FFSInfo aux = new FFSInfo(i,p);
+		for(FFSInfo f: this.ffsTable.values()){
+			if(f.equals(aux)) return true;
+		}
+		return false;
+		//return this.ffsTable.containsValue(new FFSInfo(i,p)); 	// nao funciona
+	}
 }

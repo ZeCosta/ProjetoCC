@@ -11,25 +11,30 @@ import java.util.*;
 import java.util.concurrent.locks.*;
 import java.io.ObjectInputStream;
 import java.io.ByteArrayInputStream;
+import java.lang.StringBuilder;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 //	ToDo:
 //create controller class -> with udp socket, id of task (with lock) map of objects to save the bytes (each with locks)
 //parse http request
 //...
 
+
+//Pool of threads -> int nthreads=6, decrements when a thread starts, increses when a thread ends, if it's 0 doesn't create a thread
 public class HttpGw {
 	public static int udpport=8888;
 
 	public static int tcpport = 8080;
 	public static int backlog = 50;
 
-    public static void main(String[] args) {
-    	try{
-    		//get machine's ip
-    		String ip = myip();
+	public static void main(String[] args) {
+		try{
+			//get machine's ip
+			String ip = myip();
 
-    		//translate ip into InetAddress object and create the udp socket
-    		InetAddress addr =InetAddress.getByName(ip);
+			//translate ip into InetAddress object and create the udp socket
+			InetAddress addr =InetAddress.getByName(ip);
 			DatagramSocket udpsocket = new DatagramSocket(udpport,addr);
 
 			CoordinatorHttpGw coord = new CoordinatorHttpGw(udpsocket);
@@ -37,49 +42,48 @@ public class HttpGw {
 
 
 
-    		//new ParserTCP(tcpport,backlog,addr).start();
-    		new ParserTCP(addr,coord).start();
+			//new ParserTCP(tcpport,backlog,addr).start();
+			new ParserTCP(addr,coord).start();
 
-    		new ReceiverUDP(coord).start();
-    	}catch (Exception e) {
-            System.out.println("Erro");
-        }
+			new ReceiverUDP(coord).start();
+		}catch (Exception e) {
+			System.out.println("Erro");
+		}
 		
-    }
+	}
 
 
+	public static String myip(){
+		String ip = new String();
+		try{
+			Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+			while (interfaces.hasMoreElements()) {
+				NetworkInterface iface = interfaces.nextElement();
+				// filters out 127.0.0.1 and inactive interfaces
+				if (iface.isLoopback() || !iface.isUp())
+					continue;
 
-    public static String myip(){
-    	String ip = new String();
-        try{
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            while (interfaces.hasMoreElements()) {
-                NetworkInterface iface = interfaces.nextElement();
-                // filters out 127.0.0.1 and inactive interfaces
-                if (iface.isLoopback() || !iface.isUp())
-                    continue;
+				Enumeration<InetAddress> addresses = iface.getInetAddresses();
+				while(addresses.hasMoreElements()) {
+					InetAddress addr = addresses.nextElement();
+					ip = addr.getHostAddress();
+					//System.out.println(iface.getDisplayName() + " " + ip);
+				}
+			}
+			System.out.println(ip);
+			return ip;
+			
 
-                Enumeration<InetAddress> addresses = iface.getInetAddresses();
-                while(addresses.hasMoreElements()) {
-                    InetAddress addr = addresses.nextElement();
-                    ip = addr.getHostAddress();
-                    //System.out.println(iface.getDisplayName() + " " + ip);
-                }
-            }
-            System.out.println(ip);
-            return ip;
-            
-
-        } catch (Exception e) {
-            System.out.println("Erro");
-        }
-        return null;
-    }
+		} catch (Exception e) {
+			System.out.println("Erro");
+		}
+		return null;
+	}
 }
 
 class ReceiverUDP extends Thread{
 	DatagramSocket socket;
-	String pass = new String("ola");		//For now its a fixed password -> maybe use an encryption related to a key/ip of the origin
+	String pass;		//For now its a fixed password -> maybe use an encryption related to a key/ip of the origin
 	CoordinatorHttpGw coord;
 	ReceiverUDP(DatagramSocket s){
 		this.socket=s;
@@ -93,71 +97,82 @@ class ReceiverUDP extends Thread{
 		boolean running;
 		this.socket=this.coord.getSocket();
 
-	    try{
+		try{
 			running = true;
-		    while (running) {
-		    	System.out.println("Waiting for packet");
-		    	byte[] buf = new byte[256];
-		        DatagramPacket packet = new DatagramPacket(buf, buf.length);
-		        socket.receive(packet);
-		        
-		        InetAddress address = packet.getAddress();
-		        int port = packet.getPort();
-		        packet = new DatagramPacket(buf, buf.length, address, port);
-		        
-		    	System.out.println("Recieved packet");
+			while (running) {
+				System.out.println("Waiting for packet");
+				byte[] buf = new byte[256];
+				DatagramPacket packet = new DatagramPacket(buf, buf.length);
+				socket.receive(packet);
+				
+				InetAddress address = packet.getAddress();
+				int port = packet.getPort();
+				packet = new DatagramPacket(buf, buf.length, address, port);
+				
+				System.out.println("Recieved packet");
 
-		    	ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(buf));
+				ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(buf));
 				PacketUDP p1 = (PacketUDP) in.readObject();
 				in.close();
 
-		        /*
-		        	System.out.println(p1);
-		        	System.out.println(p1.getPackettype());
-		        	System.out.println(p1.getPacketid());
-		        	System.out.println(p1.getChunkid());
-		        	System.out.println(p1.getChunk() + "->" + arr);
-		        	System.out.println(arr + "==" + pass + "? " + arr.equals(pass));
-		        	System.out.println();
-		       	*/
+			   
 
-		        //	Handle the PacketUDP
-		        if(p1.getPackettype()==1){
-		        	System.out.println("->Subscribe");
-		        	String arr = new String(p1.getChunk());
-		        	if(arr.equals(pass)){
-		        		System.out.println("\tPassword "+arr+" accepted");
-		        		this.coord.addServer(address,port);
-		        		System.out.println(this.coord.getTableSize());
-		        	}
-		        	else{
-		        		System.out.println("\tPassword "+arr+" wrong");
+				//	Handle the PacketUDP
+				if(p1.getPackettype()==1){
+					System.out.println("->Subscribe");
+					if(!coord.FFSExists(address,port)){
+						try{
+							StringBuilder sb = new StringBuilder();
+							sb.append("Subscribe");
+							sb.append(address.getHostAddress());
+							pass = new String(sb);
+							//sb.append(":").append(port);
+							//hash!!!
+							MessageDigest digest = MessageDigest.getInstance("SHA-256");
+							byte[] hash = digest.digest(pass.getBytes());
 
-		        	}
-		        }else System.out.println("->PacketUDP type not recognised");
-		        /*
-			        //String teste = "end";
-			        System.out.println(received + "!");
-			        System.out.println(received.equals("end"));
-			        //System.out.println(teste.equals("end"));
-			        if (received.equals("end")) {
-			            running = false;
-			            System.out.println("AAAAAAA");
-			            continue;
-			        }
-		        */
+							if(Arrays.equals(p1.getChunk(),hash)){
+								System.out.println("\tPassword accepted");
+								this.coord.addServer(address,port);
+								System.out.println(this.coord.getTableSize());
+							}
+							else{
+								System.out.println("\tPassword wrong");
+							}
+						}
+						catch(NoSuchAlgorithmException e) {
+							e.printStackTrace();
+						}
+					}
+					else System.out.println("->FFS already subscribed");
+				}else{
+					if(coord.FFSExists(address,port)){
+						System.out.println("->FFS recognised");
+						if(p1.getPackettype()==3){
+							if(coord.getChunks(p1.getPacketid())==null){
+								String fileName = new String(p1.getChunk());
+								Chunks chunk1 = new Chunks(fileName, p1.getChunkid());
+								coord.addChunks(p1.getPacketid(),chunk1);
+							}
+						}
+						else System.out.println("->PacketUDP type not recognised");
+					}
+					else System.out.println("->FFS not recognised");
+				}
+			   
 
 				// Remove this send
-		        coord.sendPacketRandomFFS(p1);
-		        //socket.send(packet);
-	            System.out.println();
-		    }
-		    socket.close();
-	    
-	    }catch(Exception e){
-	        System.out.println("ReceiverUDP error");
-            e.printStackTrace();
-	    }
+				//coord.sendPacketRandomFFS(p1);
+
+				//socket.send(packet);
+				System.out.println();
+			}
+			socket.close();
+		
+		}catch(Exception e){
+			System.out.println("ReceiverUDP error");
+			e.printStackTrace();
+		}
 	}
 }
 
@@ -182,15 +197,15 @@ class ParserTCP extends Thread{
 
 
 	public void run(){
-        try {
-        	ServerSocket ss = new ServerSocket(tcpport,backlog,addr);
-            while (true) {
-                Socket socket = ss.accept();
-                new SessionTCP(socket,coord).start();  
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+		try {
+			ServerSocket ss = new ServerSocket(tcpport,backlog,addr);
+			while (true) {
+				Socket socket = ss.accept();
+				new SessionTCP(socket,coord).start();  
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 }
 
@@ -199,6 +214,9 @@ class ParserTCP extends Thread{
 class SessionTCP extends Thread{
 	Socket socket;
 	CoordinatorHttpGw coord;
+
+	int roundTripTime = 10;
+	int tries = 3;
 
 	SessionTCP(Socket socket){
 		this.socket=socket;
@@ -210,38 +228,65 @@ class SessionTCP extends Thread{
 
 	public void run(){
 		try{
-			float soma=0,aux;
+			int requestID = coord.getRequestID(); //id of the session -> key for the map of chunks
+			//purge chunks
+			coord.removeChunks(requestID);
+
+			System.out.println("My Session ID: "+ requestID);
+
 			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-	        PrintWriter out = new PrintWriter(socket.getOutputStream());
+			PrintWriter out = new PrintWriter(socket.getOutputStream());
 
 
-	        String line;
-	        int i=0;
+			String line;
+			int i=0;
 
-	        line = in.readLine();
-	        while (line != null && line.length()>0) {
-	        	System.out.println(i+": "+line);
-	            	
-	            //out.println("linha "+i);
-	            //out.flush();
-	            i+=1;
-	        	line = in.readLine();
-	        	
-	        }
-	        System.out.println("TCPSession end");
+			System.out.println("---------------------");
+			line = in.readLine();
+			while (line != null && line.length()>0) {
+				System.out.println(i+": "+line);
+					
+				//out.println("linha "+i);
+				//out.flush();
+				i+=1;
+				line = in.readLine();
+				
+			}
+			System.out.println("---------------------");
 
-	        String str = new String("Packet sent by session sent");
-	        PacketUDP p1 = new PacketUDP(1,0,0,str.getBytes());
-	        coord.sendPacketRandomFFS(p1);
+			//System.out.println("TCPSession end");
+
+			String str = new String("/file.extension");
+			PacketUDP p1 = new PacketUDP(3,requestID,0,str.getBytes());
+			try{
+				int size = 0;
+				int aux=0;
+				while(size==0){
+					coord.sendPacketRandomFFS(p1);
+					Thread.sleep(this.roundTripTime);
+					//getsizeof file
+					size = this.coord.getChunksSize(p1.getPacketid());
+					aux+=1;
+					if(aux==this.tries)size=-1;
+				}
+				// Request chunks if size>0
+				System.out.println("Saiu do ciclo. Size="+size);
+			}
+			catch(IllegalArgumentException e){
+				System.out.println("Error: No Fast File Server Connected");
+			}
+			catch(InterruptedException e){
+				System.out.println("Error: Thread Could Not Sleep");
+			}
 
  			
- 			out.println("linha "+i);
-	        System.out.println("aaa");
-	        out.flush();
+ 			out.println("Numero de linhas: "+i);
+			System.out.println("");
+			out.flush();
 
-	        socket.shutdownOutput();
-	        socket.shutdownInput();
-	        socket.close();
+			socket.shutdownOutput();
+			socket.shutdownInput();
+			socket.close();
 
 		}catch(IOException e){
 			e.printStackTrace();
