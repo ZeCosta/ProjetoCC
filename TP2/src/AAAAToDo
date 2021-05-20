@@ -3,7 +3,7 @@ FFS ter tablea de ficheiros
 FFS ao receber pedido do tipo 3 indiar o tamanho do ficheiro (para já retorna sempre 5)
 HttpGw já pede o tamanho do ficheiro, agr tem de pedir os chunks (cada chunk vai ter 400bytes)
 FFS receber um pedio do tipo 4 e enviar os chunks certos
-
+Unsubscribe <- talvez seja inuil
 
 
 		Extras:
