@@ -32,6 +32,7 @@ public class HttpGw {
 		try{
 			//get machine's ip
 			String ip = myip();
+			System.out.println("HttpGw's IP: " + ip);
 
 			//translate ip into InetAddress object and create the udp socket
 			InetAddress addr =InetAddress.getByName(ip);
@@ -47,7 +48,8 @@ public class HttpGw {
 
 			new ReceiverUDP(coord).start();
 		}catch (Exception e) {
-			System.out.println("Erro");
+			System.out.println("Erro na main");
+			e.printStackTrace();
 		}
 		
 	}
@@ -70,7 +72,7 @@ public class HttpGw {
 					//System.out.println(iface.getDisplayName() + " " + ip);
 				}
 			}
-			System.out.println(ip);
+			//System.out.println(ip);
 			return ip;
 			
 
@@ -101,7 +103,7 @@ class ReceiverUDP extends Thread{
 			running = true;
 			while (running) {
 				System.out.println("Waiting for packet");
-				byte[] buf = new byte[256];
+				byte[] buf = new byte[1024];
 				DatagramPacket packet = new DatagramPacket(buf, buf.length);
 				socket.receive(packet);
 				
@@ -109,7 +111,7 @@ class ReceiverUDP extends Thread{
 				int port = packet.getPort();
 				packet = new DatagramPacket(buf, buf.length, address, port);
 				
-				System.out.println("Recieved packet");
+				System.out.println("Recieved packet\n");
 
 				ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(buf));
 				PacketUDP p1 = (PacketUDP) in.readObject();
@@ -119,7 +121,7 @@ class ReceiverUDP extends Thread{
 
 				//	Handle the PacketUDP
 				if(p1.getPackettype()==1){
-					System.out.println("->Subscribe");
+					System.out.println("Subscribe");
 					if(!coord.FFSExists(address,port)){
 						try{
 							StringBuilder sb = new StringBuilder();
@@ -134,7 +136,7 @@ class ReceiverUDP extends Thread{
 							if(Arrays.equals(p1.getChunk(),hash)){
 								System.out.println("\tPassword accepted");
 								this.coord.addServer(address,port);
-								System.out.println(this.coord.getTableSize());
+								System.out.println("Number of servers: " + this.coord.getNumberFFS());
 							}
 							else{
 								System.out.println("\tPassword wrong");
@@ -149,10 +151,40 @@ class ReceiverUDP extends Thread{
 					if(coord.FFSExists(address,port)){
 						System.out.println("->FFS recognised");
 						if(p1.getPackettype()==3){
-							if(coord.getChunks(p1.getPacketid())==null){
+							if(coord.getChunkManager(p1.getPacketid())==null){
 								String fileName = new String(p1.getChunk());
-								Chunks chunk1 = new Chunks(fileName, p1.getChunkid());
-								coord.addChunks(p1.getPacketid(),chunk1);
+								ChunkManager chunk1 = new ChunkManager(fileName, p1.getChunkid());
+								coord.addChunkManager(p1.getPacketid(),chunk1);
+							}
+						}
+						else if(p1.getPackettype()==4){
+							System.out.println("Chunk Recieved");
+							this.coord.setChunk(p1.getPacketid(),p1.getChunkid(),p1.getChunk());
+						}
+						else if(p1.getPackettype()==2){
+							System.out.println("Unsibscribe Request");
+
+							try{
+								StringBuilder sb = new StringBuilder();
+								sb.append("Unubscribe");
+								sb.append(address.getHostAddress());
+								pass = new String(sb);
+								//sb.append(":").append(port);
+								//hash!!!
+								MessageDigest digest = MessageDigest.getInstance("SHA-256");
+								byte[] hash = digest.digest(pass.getBytes());
+
+								if(Arrays.equals(p1.getChunk(),hash)){
+									System.out.println("\tPassword accepted");
+									this.coord.removeServer(address);
+									System.out.println("Number of servers: " + this.coord.getNumberFFS());
+								}
+								else{
+									System.out.println("\tPassword wrong");
+								}
+							}
+							catch(NoSuchAlgorithmException e) {
+								e.printStackTrace();
 							}
 						}
 						else System.out.println("->PacketUDP type not recognised");
@@ -201,6 +233,23 @@ class ParserTCP extends Thread{
 			ServerSocket ss = new ServerSocket(tcpport,backlog,addr);
 			while (true) {
 				Socket socket = ss.accept();
+
+				try{
+					//threadpool
+					this.coord.threadLock.lock();
+					try{
+						while(this.coord.MAXTHREADS==0){
+							this.coord.threadCondition.await();
+						}
+						this.coord.MAXTHREADS-=1;
+					}finally{
+						this.coord.threadLock.unlock();
+					}				
+				}catch(InterruptedException e){
+					e.printStackTrace();
+				}
+
+				System.out.println("ThreadCreated");
 				new SessionTCP(socket,coord).start();  
 			}
 		} catch (IOException e) {
@@ -215,8 +264,11 @@ class SessionTCP extends Thread{
 	Socket socket;
 	CoordinatorHttpGw coord;
 
-	int roundTripTime = 10;
-	int tries = 3;
+	int ROUNDTRIPTIME = 15;		//tempo que espera por cada pedido de tamanho
+	int REQUESTTIME = 2;
+	int TRIES = 3;				//numero de vezes que reenvia o pacote
+	int MAXCHUNKSIZE = 400;	
+	
 
 	SessionTCP(Socket socket){
 		this.socket=socket;
@@ -226,11 +278,15 @@ class SessionTCP extends Thread{
 		this.coord=c;
 	}
 
+	public void threadEnd(){
+		
+	}
+
 	public void run(){
 		try{
 			int requestID = coord.getRequestID(); //id of the session -> key for the map of chunks
 			//purge chunks
-			coord.removeChunks(requestID);
+			coord.removeChunkManager(requestID);
 
 			System.out.println("My Session ID: "+ requestID);
 
@@ -256,21 +312,45 @@ class SessionTCP extends Thread{
 
 			//System.out.println("TCPSession end");
 
-			String str = new String("/file.extension");
+			String str = new String("twochunkfile.html");
 			PacketUDP p1 = new PacketUDP(3,requestID,0,str.getBytes());
 			try{
+				//Thread.sleep(20*1000);		//Para testar o limite de treads
 				int size = 0;
 				int aux=0;
 				while(size==0){
 					coord.sendPacketRandomFFS(p1);
-					Thread.sleep(this.roundTripTime);
+					Thread.sleep(this.ROUNDTRIPTIME);
 					//getsizeof file
-					size = this.coord.getChunksSize(p1.getPacketid());
+					size = this.coord.getChunkManagerSize(p1.getPacketid());
 					aux+=1;
-					if(aux==this.tries)size=-1;
+					if(aux==this.TRIES)size=-1;
 				}
 				// Request chunks if size>0
 				System.out.println("Saiu do ciclo. Size="+size);
+				if(size>0){
+					//create space for chunks
+					this.coord.createChunksSpace(requestID);
+					
+					aux=0;
+					boolean downloadcomplete=false;
+					p1.setPackettype(4);
+					while(!downloadcomplete && aux<TRIES){
+
+						//request file chunks
+						System.out.println("Requested Chunks");
+						if(this.coord.requestChunks(requestID, p1)){
+							downloadcomplete=true;
+						}else{
+							Thread.sleep(this.ROUNDTRIPTIME-this.REQUESTTIME*(size/400));
+						}
+						aux+=1;
+					}
+					if(downloadcomplete){
+						System.out.println("Download Complete!");
+					}else System.out.println("Download Not Complete!");
+				}
+				
 			}
 			catch(IllegalArgumentException e){
 				System.out.println("Error: No Fast File Server Connected");
@@ -290,6 +370,16 @@ class SessionTCP extends Thread{
 
 		}catch(IOException e){
 			e.printStackTrace();
+		}
+
+
+		this.coord.threadLock.lock();
+		try{
+			System.out.println("Thread dismantled");
+			this.coord.MAXTHREADS+=1;
+			this.coord.threadCondition.signal();
+		}finally{
+			this.coord.threadLock.unlock();
 		}
 	}
 }

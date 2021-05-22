@@ -21,18 +21,26 @@ import java.util.concurrent.locks.ReentrantLock;
 
 
 public class CoordinatorHttpGw {
+	int MAXCHUNKSIZE=400;
+
+	int MAXTHREADS=10;
+	ReentrantLock threadLock = new ReentrantLock();
+	Condition threadCondition = threadLock.newCondition();
+
+
 	ReentrantLock socketWriteLock = new ReentrantLock();
 	DatagramSocket socket;
 
 	//reentrant lock for table manage
-	HashMap<Integer, FFSInfo> ffsTable = new HashMap<Integer, FFSInfo>();
-
-	int tablekey=0; //number of FFServers
+	HashMap<InetAddress, FFSInfo> ffsTable = new HashMap<InetAddress, FFSInfo>();
+	int numberFFS=0; //number of FFServers
+	ReentrantLock ffsLock = new ReentrantLock();
 	
-	ReentrantLock requestIDLock = new ReentrantLock();
-	int requestID=0;	//number of the request -> key for the chunks map/list
 
-	HashMap<Integer, Chunks> chunks = new HashMap<Integer, Chunks>();
+	ReentrantLock requestIDLock = new ReentrantLock();
+	int requestID=0;	//number of the request -> key for the chunkmanagers map/list
+
+	HashMap<Integer, ChunkManager> chunkmanagers = new HashMap<Integer, ChunkManager>();
 
 	public CoordinatorHttpGw(DatagramSocket s){
 		this.socket=s;
@@ -42,13 +50,36 @@ public class CoordinatorHttpGw {
 		return this.socket;
 	}
 
-	public void addServer(InetAddress i, int p){
-		FFSInfo sv = new FFSInfo(i,p);
-		this.ffsTable.put(this.tablekey,sv);
-		this.tablekey+=1;
+	public int addServer(InetAddress i, int p){
+		this.ffsLock.lock();
+		try{
+			FFSInfo sv = new FFSInfo(i,p);
+			this.ffsTable.put(i,sv);
+			this.numberFFS+=1;
+			return this.numberFFS;
+		}finally{
+			this.ffsLock.unlock();
+		}
 	}
-	public int getTableSize(){
-		return tablekey;
+
+	public int removeServer(InetAddress i){
+		this.ffsLock.lock();
+		try{
+			this.ffsTable.remove(i);
+			this.numberFFS-=1;
+			return this.numberFFS;
+		}finally{
+			this.ffsLock.unlock();
+		}
+	}
+
+	public int getNumberFFS(){
+		this.ffsLock.lock();
+		try{
+			return this.numberFFS;
+		}finally{
+			this.ffsLock.unlock();
+		}
 	}
 
 	public void sendPacket(PacketUDP p1, InetAddress ipAddress, int port){
@@ -74,14 +105,28 @@ public class CoordinatorHttpGw {
 		}
 	}
 
+
+
+	//Colocar locks
 	public void sendPacketRandomFFS(PacketUDP p1) throws IllegalArgumentException{
-		FFSInfo svinfo = this.getRandomFFSInfo();
-		this.sendPacket(p1, svinfo.getIp(), svinfo.getPort());
+		try{
+			Random generator = new Random();
+			FFSInfo[] svinfos = new FFSInfo[this.numberFFS];
+			svinfos = this.ffsTable.values().toArray(svinfos);
+			FFSInfo svinfo = svinfos[generator.nextInt(svinfos.length)];
+			
+			//FFSInfo svinfo = this.getRandomFFSInfo();
+			this.sendPacket(p1, svinfo.getIp(), svinfo.getPort());
+		}
+		catch(IllegalArgumentException e){
+			throw e;
+		}
 	}
+/*
 	public FFSInfo getRandomFFSInfo() throws IllegalArgumentException{
 		try{
 			Random rand = new Random();
-			int n = rand.nextInt(this.tablekey);
+			int n = rand.nextInt(this.numberFFS);
 			System.out.println("Random is "+n);
 			return this.ffsTable.get(n);
 		}
@@ -89,7 +134,6 @@ public class CoordinatorHttpGw {
 			throw e;
 		}
 	}
-
 	public void sendPacketFFS(PacketUDP p1, int index) throws IllegalArgumentException{
 		try{
 			FFSInfo svinfo = this.ffsTable.get(index);
@@ -99,7 +143,7 @@ public class CoordinatorHttpGw {
 			throw e;
 		}
 	}
-
+*/
 
 	public int getRequestID(){
 		this.requestIDLock.lock();
@@ -114,22 +158,57 @@ public class CoordinatorHttpGw {
 
 
 
-	public void addChunks(int reqID, Chunks c){
-		this.chunks.put(reqID,c);
+//no need for locks because only the tcp session reads and the udp receiver writes
+	public void addChunkManager(int reqID, ChunkManager c){
+		this.chunkmanagers.put(reqID,c);
 	}
-	public Chunks getChunks(int reqID){
-		return this.chunks.get(reqID);
+	public ChunkManager getChunkManager(int reqID){
+		return this.chunkmanagers.get(reqID);
 	}
-	public void removeChunks(int reqID){
-		this.chunks.remove(reqID);
+	public void removeChunkManager(int reqID){
+		this.chunkmanagers.remove(reqID);
 	}
 
-	public int getChunksSize(int reqID){
-		if(this.chunks.get(reqID)!=null)
-			return this.chunks.get(reqID).getSize();
+	public int getChunkManagerSize(int reqID){
+		if(this.chunkmanagers.get(reqID)!=null)
+			return this.chunkmanagers.get(reqID).getSize();
 		return 0;
 	}
 
+	public void createChunksSpace(int reqID){
+		int size = this.chunkmanagers.get(reqID).getSize();
+		int key=0, countsize=0;
+		
+		while(countsize<size){
+			this.chunkmanagers.get(reqID).setChunk(key,null);
+			
+			countsize+=MAXCHUNKSIZE;
+			key+=1;
+		}
+	}
+
+	public boolean requestChunks(int reqID, PacketUDP p1){
+		boolean complete = true;
+		int size=this.chunkmanagers.get(reqID).getSize();
+		for (Map.Entry<Integer,  byte[]> chunk: this.chunkmanagers.get(reqID).getEntrySetChunks()) {
+			if(chunk.getValue()==null){
+				System.out.println("requeste chunk "+ chunk.getKey());
+				p1.setChunkid(chunk.getKey());
+				this.sendPacketRandomFFS(p1);
+				complete=false;
+			}
+		}
+		return complete;
+	}
+
+
+	public void setChunk(int reqID, int chunkid, byte[] bytes){
+		if(this.chunkmanagers.get(reqID)!=null)
+			this.chunkmanagers.get(reqID).setChunk(chunkid,bytes);
+	}
+
+
+	
 
 
 	public boolean FFSExists(InetAddress i, int p){
