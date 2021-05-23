@@ -398,6 +398,7 @@ public class FastFileServer{
 	}
 
 
+	public static SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss z");
 	//String of metadata
 	public static String GetFileMetadata(String filename){
 		StringBuilder sb = new StringBuilder();
@@ -406,7 +407,6 @@ public class FastFileServer{
 			Path filep = Paths.get(filename);
 			BasicFileAttributes attr = Files.readAttributes(filep, BasicFileAttributes.class);
 
-			SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss z");
 			//System.out.println("lastModifiedTime: " + attr.lastModifiedTime());
 			sb.append("Last-Modified: ");
 			FileTime fileTime = attr.lastModifiedTime();

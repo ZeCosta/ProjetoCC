@@ -243,7 +243,7 @@ class ParserTCP extends Thread{
 					e.printStackTrace();
 				}
 
-				System.out.println("ThreadCreated");
+				//System.out.println("ThreadCreated");
 				new SessionTCP(socket,coord).start();  
 			}
 		} catch (IOException e) {
@@ -304,7 +304,7 @@ class SessionTCP extends Thread{
 			//purge chunks
 			coord.removeChunkManager(requestID);
 
-			System.out.println("My Session ID: "+ requestID);
+			System.out.println("\nMy Session ID: "+ requestID);
 
 			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			OutputStream os = socket.getOutputStream();
@@ -326,7 +326,7 @@ class SessionTCP extends Thread{
 				line = in.readLine();
 				
 			}
-			System.out.println("---------------------");
+			//System.out.println("---------------------");
 
 			
 
@@ -449,7 +449,7 @@ class SessionTCP extends Thread{
 
 		this.coord.threadLock.lock();
 		try{
-			System.out.println("Thread dismantled");
+			//System.out.println("Thread dismantled");
 			this.coord.MAXTHREADS+=1;
 			this.coord.threadCondition.signal();
 		}finally{
