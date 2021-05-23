@@ -272,8 +272,30 @@ class SessionTCP extends Thread{
 		this.coord=c;
 	}
 
-	public void threadEnd(){
-		
+
+	String httpMethod;
+	String filename;
+	boolean badrequest=false;
+	private void parseTopHeaderHttpRequest(String line){
+		String[] parts = line.split("\\s+", 3);
+		if (parts.length != 3
+				|| !parts[1].startsWith("/")
+				|| !parts[2].toUpperCase().startsWith("HTTP/")) {
+			badrequest = true;
+		}else{
+			httpMethod = parts[0];
+			System.out.println("Http Method: "+httpMethod);
+			filename = parts[1].substring(1);
+			System.out.println("File: "+filename);
+
+		}
+	}
+
+	private void parseCommonHeaderHttpRequest(String line){
+		String[] pair = line.split(":", 2);
+		if (pair.length != 2) {
+			badrequest = true;
+		}
 	}
 
 	public void run(){
@@ -289,15 +311,18 @@ class SessionTCP extends Thread{
 			PrintWriter out = new PrintWriter(os);
 
 
-			String line;
-			int i=0;
 
-			System.out.println("---------------------");
+			//Parse Http Request
+			String line;
+
+	        line = in.readLine();
+	        parseTopHeaderHttpRequest(line);
+
+			//System.out.println("---------------------");
 			line = in.readLine();
 			while (line != null && line.length()>0) {
-				System.out.println(i+": "+line);
-					
-				i+=1;
+				//System.out.println(i+": "+line);
+				parseCommonHeaderHttpRequest(line);
 				line = in.readLine();
 				
 			}
@@ -306,15 +331,19 @@ class SessionTCP extends Thread{
 			
 
 			//	Bad request
-			boolean badrequest=false;
 			if(badrequest){
 				out.write("HTTP/1.1 400 Bad Request\r\n\r\n");
 				out.write("Connection: Closed");
-			}else{
+			}
+			else if(!httpMethod.equals("GET")){
+				out.write("HTTP/1.1 501 Not Implemented\r\n\r\n");
+				out.write("Connection: Closed");
+			}
+			else{
 
 				SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:Ss z");
 				
-				String str = new String("enunciado.pdf");
+				String str = new String(filename);
 				//String str = new String("index.html");
 
 				PacketUDP p1 = new PacketUDP(3,requestID,0,str.getBytes());
@@ -356,7 +385,7 @@ class SessionTCP extends Thread{
 							aux+=1;
 						}
 						if(downloadcomplete){
-							System.out.println("Download Complete!".getBytes());
+							System.out.println("Download Complete!");
 							os.write("HTTP/1.1 200 OK\r\n".getBytes());
 							os.write("Server: HTTP server/0.1\n".getBytes());
 							os.write(("Date: "+format.format(new java.util.Date())+"\n").getBytes());
@@ -370,17 +399,7 @@ class SessionTCP extends Thread{
 							
 							//add file to outputstream
 							this.coord.getChunksToSocketAsBytes(requestID,socket.getOutputStream());
-							/*
-							if(isText(metadata)){
-								//write file bytes to socket as a string
-								//System.out.println("É texto");
-								this.coord.getChunksToSocketAsString(requestID,out);
-								//to string chunks
-							}else{
-								//System.out.println("Não texto");
-								//write file bytes to socket as a string
-								this.coord.getChunksToSocketAsBytes(requestID,socket.getOutputStream());
-							}*/
+
 							os.write("\r\n\r\n".getBytes());
 						}else{
 							System.out.println("Download Not Complete!");
@@ -390,21 +409,6 @@ class SessionTCP extends Thread{
 						System.out.println("404");
 						out.write("HTTP/1.1 404 Not Found\r\n\r\n");
 
-						/*
-						Content-Length: 230
-						Connection: Closed
-						Content-Type: text/html; charset=iso-8859-1
-						"
-						<!DOCTYPE HTML>
-						<html>
-						<head>
-						   <title>404 Not Found</title>
-						</head>
-						<body>
-						   <h1>Not Found</h1>
-						   <p>The requested URL was not found on this server.</p>
-						</body>
-						</html>"*/
 					} 
 
 				}

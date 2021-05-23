@@ -300,7 +300,7 @@ public class FastFileServer{
 
 						}else if(p2.getPackettype()==4){	// chunk request
 							String file = new String(p2.getChunk());
-							System.out.println("->Send chunk from "+file);
+							//System.out.println("->Send chunk from "+file);
 							
 							//System.out.println(file);
 							if(fileregister.contains(file)){
@@ -406,7 +406,7 @@ public class FastFileServer{
 			Path filep = Paths.get(filename);
 			BasicFileAttributes attr = Files.readAttributes(filep, BasicFileAttributes.class);
 
-			SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:Ss z");
+			SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss z");
 			//System.out.println("lastModifiedTime: " + attr.lastModifiedTime());
 			sb.append("Last-Modified: ");
 			FileTime fileTime = attr.lastModifiedTime();
