@@ -19,6 +19,9 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
+import java.io.DataOutputStream;
+import java.io.OutputStream;
+
 
 public class CoordinatorHttpGw {
 	int MAXCHUNKSIZE=400;
@@ -122,28 +125,7 @@ public class CoordinatorHttpGw {
 			throw e;
 		}
 	}
-/*
-	public FFSInfo getRandomFFSInfo() throws IllegalArgumentException{
-		try{
-			Random rand = new Random();
-			int n = rand.nextInt(this.numberFFS);
-			System.out.println("Random is "+n);
-			return this.ffsTable.get(n);
-		}
-		catch(IllegalArgumentException e){
-			throw e;
-		}
-	}
-	public void sendPacketFFS(PacketUDP p1, int index) throws IllegalArgumentException{
-		try{
-			FFSInfo svinfo = this.ffsTable.get(index);
-			this.sendPacket(p1, svinfo.getIp(), svinfo.getPort());
-		}
-		catch(IllegalArgumentException e){
-			throw e;
-		}
-	}
-*/
+
 
 	public int getRequestID(){
 		this.requestIDLock.lock();
@@ -162,6 +144,10 @@ public class CoordinatorHttpGw {
 	public void addChunkManager(int reqID, ChunkManager c){
 		this.chunkmanagers.put(reqID,c);
 	}
+	public void setChunkManagerSizeAndMetadata(int reqID, int s, String m){
+		this.chunkmanagers.get(reqID).setSizeAndMetadata(s,m);
+	}
+
 	public ChunkManager getChunkManager(int reqID){
 		return this.chunkmanagers.get(reqID);
 	}
@@ -170,9 +156,10 @@ public class CoordinatorHttpGw {
 	}
 
 	public int getChunkManagerSize(int reqID){
-		if(this.chunkmanagers.get(reqID)!=null)
-			return this.chunkmanagers.get(reqID).getSize();
-		return 0;
+		return this.chunkmanagers.get(reqID).getSize();
+	}
+	public String getChunkManagerMetadata(int reqID){
+		return this.chunkmanagers.get(reqID).getMetadata();
 	}
 
 	public void createChunksSpace(int reqID){
@@ -189,14 +176,14 @@ public class CoordinatorHttpGw {
 
 	public boolean requestChunks(int reqID, PacketUDP p1){
 		boolean complete = true;
-		int size=this.chunkmanagers.get(reqID).getSize();
+		//int size=this.chunkmanagers.get(reqID).getSize();
 		for (Map.Entry<Integer,  byte[]> chunk: this.chunkmanagers.get(reqID).getEntrySetChunks()) {
 			if(chunk.getValue()==null){
-				System.out.println("requeste chunk "+ chunk.getKey());
+				//System.out.println("requeste chunk "+ chunk.getKey());
 				p1.setChunkid(chunk.getKey());
 				this.sendPacketRandomFFS(p1);
 				complete=false;
-			}
+			}// else if complete write in tcpsocket		<- o problema é se nao se consegue ir buscar o ficheiro todo
 		}
 		return complete;
 	}
@@ -207,6 +194,26 @@ public class CoordinatorHttpGw {
 			this.chunkmanagers.get(reqID).setChunk(chunkid,bytes);
 	}
 
+
+	public void getChunksToSocketAsString(int reqID, PrintWriter out){
+		for (Map.Entry<Integer,  byte[]> chunk: this.chunkmanagers.get(reqID).getEntrySetChunks()) {
+			System.out.println(new String(chunk.getValue()));
+			out.write(new String(chunk.getValue()));
+		}
+	}
+
+
+	public void getChunksToSocketAsBytes(int reqID, OutputStream out){
+		try{
+			for (Map.Entry<Integer,  byte[]> chunk: this.chunkmanagers.get(reqID).getEntrySetChunks()) {
+				out.write(chunk.getValue());
+			}
+		}
+		catch(IOException e){
+			e.printStackTrace();
+		}
+	}
+	
 
 	
 

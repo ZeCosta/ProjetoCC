@@ -15,13 +15,17 @@ import java.lang.StringBuilder;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import java.util.Date;
+import java.text.SimpleDateFormat;
+
+import java.io.OutputStream;
+
+
+
 //	ToDo:
-//create controller class -> with udp socket, id of task (with lock) map of objects to save the bytes (each with locks)
 //parse http request
-//...
 
 
-//Pool of threads -> int nthreads=6, decrements when a thread starts, increses when a thread ends, if it's 0 doesn't create a thread
 public class HttpGw {
 	public static int udpport=8888;
 
@@ -69,10 +73,8 @@ public class HttpGw {
 				while(addresses.hasMoreElements()) {
 					InetAddress addr = addresses.nextElement();
 					ip = addr.getHostAddress();
-					//System.out.println(iface.getDisplayName() + " " + ip);
 				}
 			}
-			//System.out.println(ip);
 			return ip;
 			
 
@@ -102,7 +104,7 @@ class ReceiverUDP extends Thread{
 		try{
 			running = true;
 			while (running) {
-				System.out.println("Waiting for packet");
+				//System.out.println("Waiting for packet");
 				byte[] buf = new byte[1024];
 				DatagramPacket packet = new DatagramPacket(buf, buf.length);
 				socket.receive(packet);
@@ -111,12 +113,12 @@ class ReceiverUDP extends Thread{
 				int port = packet.getPort();
 				packet = new DatagramPacket(buf, buf.length, address, port);
 				
-				System.out.println("Recieved packet\n");
 
 				ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(buf));
 				PacketUDP p1 = (PacketUDP) in.readObject();
 				in.close();
 
+				//System.out.println("Recieved packetUDP\n");
 			   
 
 				//	Handle the PacketUDP
@@ -134,9 +136,8 @@ class ReceiverUDP extends Thread{
 							byte[] hash = digest.digest(pass.getBytes());
 
 							if(Arrays.equals(p1.getChunk(),hash)){
-								System.out.println("\tPassword accepted");
 								this.coord.addServer(address,port);
-								System.out.println("Number of servers: " + this.coord.getNumberFFS());
+								System.out.println("\tPassword accepted\nNumber of servers: " + this.coord.getNumberFFS());
 							}
 							else{
 								System.out.println("\tPassword wrong");
@@ -149,16 +150,16 @@ class ReceiverUDP extends Thread{
 					else System.out.println("->FFS already subscribed");
 				}else{
 					if(coord.FFSExists(address,port)){
-						System.out.println("->FFS recognised");
+						//System.out.println("->FFS recognised");
 						if(p1.getPackettype()==3){
-							if(coord.getChunkManager(p1.getPacketid())==null){
-								String fileName = new String(p1.getChunk());
-								ChunkManager chunk1 = new ChunkManager(fileName, p1.getChunkid());
-								coord.addChunkManager(p1.getPacketid(),chunk1);
+							if(coord.getChunkManagerSize(p1.getPacketid())==0){
+								String filemetadata = new String(p1.getChunk());
+								//System.out.println("Metadata:\n"+filemetadata);
+								coord.setChunkManagerSizeAndMetadata(p1.getPacketid(),p1.getChunkid(),filemetadata);
 							}
 						}
 						else if(p1.getPackettype()==4){
-							System.out.println("Chunk Recieved");
+							//System.out.println("Chunk Recieved");
 							this.coord.setChunk(p1.getPacketid(),p1.getChunkid(),p1.getChunk());
 						}
 						else if(p1.getPackettype()==2){
@@ -175,9 +176,8 @@ class ReceiverUDP extends Thread{
 								byte[] hash = digest.digest(pass.getBytes());
 
 								if(Arrays.equals(p1.getChunk(),hash)){
-									System.out.println("\tPassword accepted");
 									this.coord.removeServer(address);
-									System.out.println("Number of servers: " + this.coord.getNumberFFS());
+									System.out.println("\tPassword accepted\nNumber of servers: " + this.coord.getNumberFFS());
 								}
 								else{
 									System.out.println("\tPassword wrong");
@@ -192,12 +192,6 @@ class ReceiverUDP extends Thread{
 					else System.out.println("->FFS not recognised");
 				}
 			   
-
-				// Remove this send
-				//coord.sendPacketRandomFFS(p1);
-
-				//socket.send(packet);
-				System.out.println();
 			}
 			socket.close();
 		
@@ -234,8 +228,8 @@ class ParserTCP extends Thread{
 			while (true) {
 				Socket socket = ss.accept();
 
+				//threadpool
 				try{
-					//threadpool
 					this.coord.threadLock.lock();
 					try{
 						while(this.coord.MAXTHREADS==0){
@@ -264,8 +258,8 @@ class SessionTCP extends Thread{
 	Socket socket;
 	CoordinatorHttpGw coord;
 
-	int ROUNDTRIPTIME = 15;		//tempo que espera por cada pedido de tamanho
-	int REQUESTTIME = 2;
+	int ROUNDTRIPTIME = 40;		//tempo que espera por cada pedido de tamanho (em milisegundos)
+	int REQUESTINCREMENT = 20;
 	int TRIES = 3;				//numero de vezes que reenvia o pacote
 	int MAXCHUNKSIZE = 400;	
 	
@@ -291,7 +285,8 @@ class SessionTCP extends Thread{
 			System.out.println("My Session ID: "+ requestID);
 
 			BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-			PrintWriter out = new PrintWriter(socket.getOutputStream());
+			OutputStream os = socket.getOutputStream();
+			PrintWriter out = new PrintWriter(os);
 
 
 			String line;
@@ -302,67 +297,142 @@ class SessionTCP extends Thread{
 			while (line != null && line.length()>0) {
 				System.out.println(i+": "+line);
 					
-				//out.println("linha "+i);
-				//out.flush();
 				i+=1;
 				line = in.readLine();
 				
 			}
 			System.out.println("---------------------");
 
-			//System.out.println("TCPSession end");
+			
 
-			String str = new String("twochunkfile.html");
-			PacketUDP p1 = new PacketUDP(3,requestID,0,str.getBytes());
-			try{
-				//Thread.sleep(20*1000);		//Para testar o limite de treads
-				int size = 0;
-				int aux=0;
-				while(size==0){
-					coord.sendPacketRandomFFS(p1);
-					Thread.sleep(this.ROUNDTRIPTIME);
-					//getsizeof file
-					size = this.coord.getChunkManagerSize(p1.getPacketid());
-					aux+=1;
-					if(aux==this.TRIES)size=-1;
-				}
-				// Request chunks if size>0
-				System.out.println("Saiu do ciclo. Size="+size);
-				if(size>0){
-					//create space for chunks
-					this.coord.createChunksSpace(requestID);
-					
-					aux=0;
-					boolean downloadcomplete=false;
-					p1.setPackettype(4);
-					while(!downloadcomplete && aux<TRIES){
+			//	Bad request
+			boolean badrequest=false;
+			if(badrequest){
+				out.write("HTTP/1.1 400 Bad Request\r\n\r\n");
+				out.write("Connection: Closed");
+			}else{
 
-						//request file chunks
-						System.out.println("Requested Chunks");
-						if(this.coord.requestChunks(requestID, p1)){
-							downloadcomplete=true;
-						}else{
-							Thread.sleep(this.ROUNDTRIPTIME-this.REQUESTTIME*(size/400));
-						}
-						aux+=1;
-					}
-					if(downloadcomplete){
-						System.out.println("Download Complete!");
-					}else System.out.println("Download Not Complete!");
-				}
+				SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:Ss z");
 				
-			}
-			catch(IllegalArgumentException e){
-				System.out.println("Error: No Fast File Server Connected");
-			}
-			catch(InterruptedException e){
-				System.out.println("Error: Thread Could Not Sleep");
+				String str = new String("enunciado.pdf");
+				//String str = new String("index.html");
+
+				PacketUDP p1 = new PacketUDP(3,requestID,0,str.getBytes());
+				try{
+					//Thread.sleep(20*1000);		//Para testar o limite de treads
+					int size = 0;
+					int aux=0;
+					
+					ChunkManager chunk1 = new ChunkManager(str, 0);
+					coord.addChunkManager(requestID,chunk1);
+									
+					while(size==0){
+						coord.sendPacketRandomFFS(p1);
+						Thread.sleep(this.ROUNDTRIPTIME);
+						//getsizeof file
+						size = this.coord.getChunkManagerSize(p1.getPacketid());
+						aux+=1;
+						if(aux==this.TRIES)size=-1;
+					}
+					// Request chunks if size>0
+					System.out.println("Saiu do ciclo. Size="+size);
+					if(size>0){
+						
+						//create space for chunks
+						this.coord.createChunksSpace(requestID);
+						
+						aux=0;
+						boolean downloadcomplete=false;
+						p1.setPackettype(4);
+						while(!downloadcomplete && aux<(TRIES*4)){		//TRIES*2 because we know the file is there, but the FFServers can go down
+
+							//request file chunks
+							System.out.println("Requested Chunks");
+							if(this.coord.requestChunks(requestID, p1)){
+								downloadcomplete=true;
+							}else{
+								Thread.sleep(this.ROUNDTRIPTIME+(aux*this.REQUESTINCREMENT));
+							}
+							aux+=1;
+						}
+						if(downloadcomplete){
+							System.out.println("Download Complete!".getBytes());
+							os.write("HTTP/1.1 200 OK\r\n".getBytes());
+							os.write("Server: HTTP server/0.1\n".getBytes());
+							os.write(("Date: "+format.format(new java.util.Date())+"\n").getBytes());
+							
+							String metadata = this.coord.getChunkManagerMetadata(requestID);
+							
+							//add metadata
+							os.write(metadata.getBytes());
+							System.out.println(metadata);
+							os.write("Connection: Closed\n\n".getBytes());
+							
+							//add file to outputstream
+							this.coord.getChunksToSocketAsBytes(requestID,socket.getOutputStream());
+							/*
+							if(isText(metadata)){
+								//write file bytes to socket as a string
+								//System.out.println("É texto");
+								this.coord.getChunksToSocketAsString(requestID,out);
+								//to string chunks
+							}else{
+								//System.out.println("Não texto");
+								//write file bytes to socket as a string
+								this.coord.getChunksToSocketAsBytes(requestID,socket.getOutputStream());
+							}*/
+							os.write("\r\n\r\n".getBytes());
+						}else{
+							System.out.println("Download Not Complete!");
+							out.write("HTTP/1.1 500 Internal Server Error\n");
+						}
+					}else{
+						System.out.println("404");
+						out.write("HTTP/1.1 404 Not Found\r\n\r\n");
+
+						/*
+						Content-Length: 230
+						Connection: Closed
+						Content-Type: text/html; charset=iso-8859-1
+						"
+						<!DOCTYPE HTML>
+						<html>
+						<head>
+						   <title>404 Not Found</title>
+						</head>
+						<body>
+						   <h1>Not Found</h1>
+						   <p>The requested URL was not found on this server.</p>
+						</body>
+						</html>"*/
+					} 
+
+				}
+				catch(IllegalArgumentException e){
+					System.out.println("Error: No Fast File Server Connected");
+					out.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+					out.write("Connection: Closed");
+				}
+				catch(InterruptedException e){
+					System.out.println("Error: Thread Could Not Sleep");
+					out.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
+					out.write("Connection: Closed");
+				}
 			}
 
- 			
- 			out.println("Numero de linhas: "+i);
-			System.out.println("");
+			/*
+ 			String res = "HTTP/1.0 200 OK\n"
+				+ "Server: HTTP server/0.1\n"
+				+ "Date: "+dateFormat.format(new java.util.Date())+"\n"
+		   		+ "Content-type: text/html; charset=UTF-8\n"
+				+ "Content-Length: 38\n\n"
+				+ "<html><body>OK</body></html>";
+			*/
+			System.out.println("Http Response sent");
 			out.flush();
+
+
+			//purge chunks
 
 			socket.shutdownOutput();
 			socket.shutdownInput();
@@ -381,5 +451,9 @@ class SessionTCP extends Thread{
 		}finally{
 			this.coord.threadLock.unlock();
 		}
+	}
+
+	public boolean isText(String m){
+		return m.contains("text");
 	}
 }

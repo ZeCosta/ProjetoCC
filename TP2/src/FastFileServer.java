@@ -30,6 +30,21 @@ import java.io.RandomAccessFile;
 
 import java.lang.Runtime;
 
+import java.util.Date;
+import java.text.SimpleDateFormat;
+
+//maybe
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+
+//MIME-Type
+import java.io.File;
+
+
 
 class FFSCoordinator {
 	boolean resubscribe;
@@ -99,7 +114,7 @@ public class FastFileServer{
 
 						DatagramPacket sendingPacket = new DatagramPacket(sendingDataBuffer,sendingDataBuffer.length,this.ipAddress, this.port);
 						this.ffsSocket.send(sendingPacket);
-						System.out.println("Resubscribe sent");
+						System.out.println("Resubscribe sent at " +new Date()+"\n");
 					}catch(IOException e){
 						e.printStackTrace();			
 					}
@@ -144,7 +159,6 @@ public class FastFileServer{
 			System.out.println("Unsubscribe sent");
 			
 			this.ffsSocket.close();
-			//System.out.println("Socket closed");
 
 		}catch(IOException e){
 			System.out.println("Unable to close socket");
@@ -158,6 +172,7 @@ public class FastFileServer{
 		fileregister.add("index.html");
 		fileregister.add("frontpage.html");
 		fileregister.add("twochunkfile.html");
+		fileregister.add("enunciado.pdf");
 
 		myIP=myip();
 		System.out.println("My ip: "+ myIP);
@@ -254,33 +269,27 @@ public class FastFileServer{
 
 					String receivedData = new String(receivingPacket.getData());
 					//
-					System.out.println("Sent from the server: "+receivedData);
-
-					System.out.println(p2);
-					System.out.println(p2.getPackettype());
-					System.out.println(p2.getPacketid());
-					System.out.println(p2.getChunkid());
-					System.out.println(p2.getChunk());
-					System.out.println();
+					
 
 					String arr = new String(p2.getChunk());
-					System.out.println(arr);
+					
 					//
 
 					if(receivingPacket.getAddress().equals(ipAddress)){
 						if(p2.getPackettype()==3){	// size request
-							System.out.println("->Send filesize");
+							System.out.println("->Send filesize+metadata");
 							int filesize=-1;
 							
 							String file = new String(p2.getChunk());
-							System.out.println(file);
+							String metadata = new String();
+
 							if(fileregister.contains(file)){
-								System.out.println("File exists");
 								filesize=getFileSizeNIO(file);
+								metadata=GetFileMetadata(file);
 							}
-							else System.out.println("File doesn't exist");
 
 							p2.setChunkid(filesize);
+							p2.setChunk(metadata.getBytes());
 							out = new ByteArrayOutputStream();
 					   		os = new ObjectOutputStream(out);		
 					   		os.writeObject(p2);
@@ -288,14 +297,13 @@ public class FastFileServer{
 
 							sendingPacket = new DatagramPacket(sendingDataBuffer,sendingDataBuffer.length,ipAddress, port);
 							ffsSocket.send(sendingPacket);
-							System.out.println("Package Sent");	
+
 						}else if(p2.getPackettype()==4){	// chunk request
-							System.out.println("->Send chunk");
-							
 							String file = new String(p2.getChunk());
-							System.out.println(file);
+							System.out.println("->Send chunk from "+file);
+							
+							//System.out.println(file);
 							if(fileregister.contains(file)){
-								System.out.println("File exists");
 								
 								p2.setChunk(getFileChunk(file,p2.getChunkid()));
 								out = new ByteArrayOutputStream();
@@ -304,12 +312,9 @@ public class FastFileServer{
 								sendingDataBuffer = out.toByteArray();
 
 								sendingPacket = new DatagramPacket(sendingDataBuffer,sendingDataBuffer.length,ipAddress, port);
-								ffsSocket.send(sendingPacket);
-								System.out.println("Package Sent");
-							
+								ffsSocket.send(sendingPacket);							
 
-							}else System.out.println("File doesn't exist");
-
+							}
 
 						}else System.out.println("Ignoring packet, Operation not recognised");
 
@@ -319,16 +324,11 @@ public class FastFileServer{
 				}
 			}
 		
-
-
-		//System.out.println("Package Unsubscribe Sent");
-
-
-		// Closing the socket connection with the server
-		//ffsSocket.close();
 	}
 	catch(SocketException e) {
-		e.printStackTrace();
+		System.out.println("Socket closed");
+
+		//e.printStackTrace();
 	}
 	catch(NoSuchAlgorithmException e) {
 		e.printStackTrace();
@@ -351,7 +351,6 @@ public class FastFileServer{
 				while(addresses.hasMoreElements()) {
 					InetAddress addr = addresses.nextElement();
 					ip = addr.getHostAddress();
-					//System.out.println(iface.getDisplayName() + " " + ip);
 				}
 			}
 			//System.out.println(ip);
@@ -370,9 +369,8 @@ public class FastFileServer{
 
 		int bytes = -1;
 		try {
-			bytes = (int) Files.size(path);
 			// size of a file (in bytes)
-			System.out.println(String.format("%,d bytes", bytes));
+			bytes = (int) Files.size(path);
 		}catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -386,10 +384,10 @@ public class FastFileServer{
 		Path path = Paths.get(fileName);
 
 		int size = getFileSizeNIO(fileName);
-		byte[] chunk = new byte[((offset*MAXCHUNKSIZE+MAXCHUNKSIZE>size)?MAXCHUNKSIZE:size)];
+		byte[] chunk = new byte[((offset*MAXCHUNKSIZE+MAXCHUNKSIZE<size)?MAXCHUNKSIZE:size-offset*MAXCHUNKSIZE)];
 		if(size>0){
 			try (RandomAccessFile raf = new RandomAccessFile(fileName, "r")) {
-				raf.seek(offset);
+				raf.seek(offset*MAXCHUNKSIZE);
 				raf.readFully(chunk);
 			}catch (IOException e) {
 				e.printStackTrace();
@@ -398,4 +396,50 @@ public class FastFileServer{
 
 		return chunk;
 	}
+
+
+	//String of metadata
+	public static String GetFileMetadata(String filename){
+		StringBuilder sb = new StringBuilder();
+
+		try{
+			Path filep = Paths.get(filename);
+			BasicFileAttributes attr = Files.readAttributes(filep, BasicFileAttributes.class);
+
+			SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:Ss z");
+			//System.out.println("lastModifiedTime: " + attr.lastModifiedTime());
+			sb.append("Last-Modified: ");
+			FileTime fileTime = attr.lastModifiedTime();
+			sb.append(format.format(fileTime.toMillis()));
+			//System.out.println("lastModifiedTime: " + formatDateTime(fileTime));
+			//System.out.println("lastModifiedTime: " + format.format(fileTime.toMillis()));
+			sb.append("\r\n");
+			
+			//System.out.println("size: " + attr.size());
+			sb.append("Content-Length: ").append(attr.size()).append("\r\n");
+
+			File file = new File(filename);
+			FileNameMap fileNameMap = URLConnection.getFileNameMap();
+			String mimeType = fileNameMap.getContentTypeFor(file.getName());
+			//System.out.println("MIME-Type: " + mimeType);
+			sb.append("Content-Type: ").append(mimeType).append("\r\n");
+
+		}catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		return sb.toString();
+	}
+
+	public static String formatDateTime(FileTime fileTime) {
+		DateTimeFormatter dateformatter = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:Ss z");
+
+        LocalDateTime localDateTime = fileTime
+                .toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+
+        return localDateTime.format(dateformatter);
+    }
+
 }
