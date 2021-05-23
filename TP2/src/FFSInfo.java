@@ -5,6 +5,9 @@ import java.util.HashSet;
 public class FFSInfo {
 	InetAddress ip;
 	int port;
+	int requested=0;
+	int received=0;
+
 	//HashSet<String> files = new HashSet<String>();
 
 	public FFSInfo(InetAddress i, int p){
@@ -18,6 +21,20 @@ public class FFSInfo {
 	public int getPort(){
 		return this.port;
 	}
+
+	public boolean tooManyMisses(){
+		return (this.received/this.requested)<75;
+	}
+
+
+	public void addRequested(){
+		this.requested+=1;
+	}
+	public void addReceived(){
+		this.received+=1;
+	}
+
+
 
 	public void setIp(InetAddress i){
 		this.ip=i;

@@ -112,6 +112,7 @@ public class CoordinatorHttpGw {
 
 	//Colocar locks
 	public void sendPacketRandomFFS(PacketUDP p1) throws IllegalArgumentException{
+		this.ffsLock.lock();
 		try{
 			Random generator = new Random();
 			FFSInfo[] svinfos = new FFSInfo[this.numberFFS];
@@ -123,6 +124,9 @@ public class CoordinatorHttpGw {
 		}
 		catch(IllegalArgumentException e){
 			throw e;
+		}
+		finally{
+			this.ffsLock.unlock();
 		}
 	}
 
