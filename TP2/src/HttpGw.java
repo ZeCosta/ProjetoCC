@@ -35,7 +35,10 @@ public class HttpGw {
 	public static void main(String[] args) {
 		try{
 			//get machine's ip
-			String ip = myip();
+			String ip;
+			if(args.length>0) ip = args[0];
+			else ip = myip();
+
 			System.out.println("HttpGw's IP: " + ip);
 
 			//translate ip into InetAddress object and create the udp socket
