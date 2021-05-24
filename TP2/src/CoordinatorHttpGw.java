@@ -35,13 +35,14 @@ public class CoordinatorHttpGw {
 	DatagramSocket socket;
 
 	//reentrant lock for table manage
-	HashMap<InetAddress, FFSInfo> ffsTable = new HashMap<InetAddress, FFSInfo>();
+	HashMap<String, FFSInfo> ffsTable = new HashMap<String, FFSInfo>();
 	int numberFFS=0; //number of FFServers
 	ReentrantLock ffsLock = new ReentrantLock();
 	
 
 	ReentrantLock requestIDLock = new ReentrantLock();
 	int requestID=0;	//number of the request -> key for the chunkmanagers map/list
+	int MAXREQUESTID=2147483647;		//não é preciso haver controlo de ids porque não vai haver colisão
 
 	HashMap<Integer, ChunkManager> chunkmanagers = new HashMap<Integer, ChunkManager>();
 
@@ -56,8 +57,9 @@ public class CoordinatorHttpGw {
 	public int addServer(InetAddress i, int p){
 		this.ffsLock.lock();
 		try{
+			String key=i.getHostAddress()+String.valueOf(p);
 			FFSInfo sv = new FFSInfo(i,p);
-			this.ffsTable.put(i,sv);
+			this.ffsTable.put(key,sv);
 			this.numberFFS+=1;
 			return this.numberFFS;
 		}finally{
@@ -65,10 +67,11 @@ public class CoordinatorHttpGw {
 		}
 	}
 
-	public int removeServer(InetAddress i){
+	public int removeServer(InetAddress i, int p){
 		this.ffsLock.lock();
 		try{
-			this.ffsTable.remove(i);
+			String key=i.getHostAddress()+String.valueOf(p);
+			this.ffsTable.remove(key);
 			this.numberFFS-=1;
 			return this.numberFFS;
 		}finally{
@@ -137,7 +140,9 @@ public class CoordinatorHttpGw {
 			return this.requestID;
 		}
 		finally{
-			this.requestID+=1;
+			if(this.requestID<MAXREQUESTID)
+				this.requestID+=1;
+			else this.requestID=0;
 			this.requestIDLock.unlock();
 		}
 	}
@@ -223,11 +228,7 @@ public class CoordinatorHttpGw {
 
 
 	public boolean FFSExists(InetAddress i, int p){
-		FFSInfo aux = new FFSInfo(i,p);
-		for(FFSInfo f: this.ffsTable.values()){
-			if(f.equals(aux)) return true;
-		}
-		return false;
-		//return this.ffsTable.containsValue(new FFSInfo(i,p)); 	// nao funciona
+		String key=i.getHostAddress()+String.valueOf(p);
+		return this.ffsTable.containsKey(key);
 	}
 }

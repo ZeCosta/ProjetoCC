@@ -40,6 +40,8 @@ public class HttpGw {
 			else ip = myip();
 
 			System.out.println("HttpGw's IP: " + ip);
+			System.out.println("HttpGw's TCPPort: " + tcpport);
+			System.out.println("HttpGw's UDPPort: " + udpport);
 
 			//translate ip into InetAddress object and create the udp socket
 			InetAddress addr =InetAddress.getByName(ip);
@@ -180,7 +182,7 @@ class ReceiverUDP extends Thread{
 								byte[] hash = digest.digest(pass.getBytes());
 
 								if(Arrays.equals(p1.getChunk(),hash)){
-									int ns1 = this.coord.removeServer(address);
+									int ns1 = this.coord.removeServer(address,port);
 									System.out.println("\tPassword accepted\nNumber of servers: " + ns1);
 								}
 								else{
