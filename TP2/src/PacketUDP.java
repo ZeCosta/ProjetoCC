@@ -10,7 +10,7 @@ public class PacketUDP implements Serializable{
 	private int packetid;	//ID do packet = ID da sessão TCP -> Necessário para guardar o Chunk no sitio certo no map
 	private int chunkid;	//Se for um chunk vai ter de ter identificacao do chunk
 							//Se for um pedido de size vai ter o tamanho do ficheiro -> -1 se mão existe
-	private byte[] chunk;	//Chunk ou FileName(String) ou password
+	private byte[] chunk;	//Chunk ou Metadata(String) ou password
 
 	public PacketUDP(){
 		this.packettype=-1;

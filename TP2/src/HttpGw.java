@@ -123,7 +123,7 @@ class ReceiverUDP extends Thread{
 
 				//	Handle the PacketUDP
 				if(p1.getPackettype()==1){
-					System.out.println("Subscribe");
+					//System.out.println("Subscribe");
 					if(!coord.FFSExists(address,port)){
 						try{
 							StringBuilder sb = new StringBuilder();
@@ -136,8 +136,9 @@ class ReceiverUDP extends Thread{
 							byte[] hash = digest.digest(pass.getBytes());
 
 							if(Arrays.equals(p1.getChunk(),hash)){
-								this.coord.addServer(address,port);
-								System.out.println("\tPassword accepted\nNumber of servers: " + this.coord.getNumberFFS());
+								int ns = this.coord.addServer(address,port);
+								//System.out.println("\tPassword accepted\nNumber of servers: " + this.coord.getNumberFFS());
+								System.out.println("\tFFS subscribed\nNumber of servers: " + ns);
 							}
 							else{
 								System.out.println("\tPassword wrong");
@@ -176,8 +177,8 @@ class ReceiverUDP extends Thread{
 								byte[] hash = digest.digest(pass.getBytes());
 
 								if(Arrays.equals(p1.getChunk(),hash)){
-									this.coord.removeServer(address);
-									System.out.println("\tPassword accepted\nNumber of servers: " + this.coord.getNumberFFS());
+									int ns1 = this.coord.removeServer(address);
+									System.out.println("\tPassword accepted\nNumber of servers: " + ns1);
 								}
 								else{
 									System.out.println("\tPassword wrong");
@@ -263,6 +264,8 @@ class SessionTCP extends Thread{
 	int TRIES = 3;				//numero de vezes que reenvia o pacote
 	int MAXCHUNKSIZE = 400;	
 	
+	String filenotfound = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
+
 
 	SessionTCP(Socket socket){
 		this.socket=socket;
@@ -408,6 +411,7 @@ class SessionTCP extends Thread{
 					}else{
 						System.out.println("404");
 						out.write("HTTP/1.1 404 Not Found\r\n\r\n");
+						out.write(filenotfound);
 
 					} 
 
