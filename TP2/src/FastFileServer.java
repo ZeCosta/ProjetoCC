@@ -398,7 +398,7 @@ public class FastFileServer{
 	}
 
 
-	public static SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss z");
+	public static SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss z", Locale.ENGLISH);
 	//String of metadata
 	public static String GetFileMetadata(String filename){
 		StringBuilder sb = new StringBuilder();
@@ -413,16 +413,16 @@ public class FastFileServer{
 			sb.append(format.format(fileTime.toMillis()));
 			//System.out.println("lastModifiedTime: " + formatDateTime(fileTime));
 			//System.out.println("lastModifiedTime: " + format.format(fileTime.toMillis()));
-			sb.append("\r\n");
+			sb.append("\n");
 			
 			//System.out.println("size: " + attr.size());
-			sb.append("Content-Length: ").append(attr.size()).append("\r\n");
+			sb.append("Content-Length: ").append(attr.size()).append("\n");
 
 			File file = new File(filename);
 			FileNameMap fileNameMap = URLConnection.getFileNameMap();
 			String mimeType = fileNameMap.getContentTypeFor(file.getName());
 			//System.out.println("MIME-Type: " + mimeType);
-			sb.append("Content-Type: ").append(mimeType).append("\r\n");
+			sb.append("Content-Type: ").append(mimeType).append("\n");
 
 		}catch (IOException e) {
 			e.printStackTrace();

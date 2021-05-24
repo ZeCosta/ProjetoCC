@@ -349,7 +349,7 @@ class SessionTCP extends Thread{
 			}
 			else{
 
-				SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:Ss z");
+				SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:Ss z", Locale.ENGLISH);
 				
 				String str = new String(filename);
 				//String str = new String("index.html");
