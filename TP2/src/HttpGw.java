@@ -32,9 +32,10 @@ public class HttpGw {
 	public static int tcpport = 8080;
 	public static int backlog = 50;
 
+	//Thread principal
 	public static void main(String[] args) {
 		try{
-			//get machine's ip
+			//ip da máquina (automatico ou manual)
 			String ip;
 			if(args.length>0) ip = args[0];
 			else ip = myip();
@@ -43,18 +44,18 @@ public class HttpGw {
 			System.out.println("HttpGw's TCPPort: " + tcpport);
 			System.out.println("HttpGw's UDPPort: " + udpport);
 
-			//translate ip into InetAddress object and create the udp socket
+			//tradução do ip para objeto InetAddress e criação do socket udp
 			InetAddress addr =InetAddress.getByName(ip);
 			DatagramSocket udpsocket = new DatagramSocket(udpport,addr);
 
+			//criação do objeto que coordena as operações entre threads
 			CoordinatorHttpGw coord = new CoordinatorHttpGw(udpsocket);
 
 
-
-
-			//new ParserTCP(tcpport,backlog,addr).start();
+			//Criação do parser TCP
 			new ParserTCP(addr,coord).start();
 
+			//Criação do parser UDP
 			new ReceiverUDP(coord).start();
 		}catch (Exception e) {
 			System.out.println("Erro na main");
@@ -64,6 +65,7 @@ public class HttpGw {
 	}
 
 
+	//Retorna o ip da máquina
 	public static String myip(){
 		String ip = new String();
 		try{
@@ -90,6 +92,8 @@ public class HttpGw {
 	}
 }
 
+
+//Thread que trata de receber os pedidos UDP, avalia-los e guarda-los nos sítios corretos
 class ReceiverUDP extends Thread{
 	DatagramSocket socket;
 	String pass;		//For now its a fixed password -> maybe use an encryption related to a key/ip of the origin
@@ -109,7 +113,7 @@ class ReceiverUDP extends Thread{
 		try{
 			running = true;
 			while (running) {
-				//System.out.println("Waiting for packet");
+				//Receção do pacote
 				byte[] buf = new byte[1024];
 				DatagramPacket packet = new DatagramPacket(buf, buf.length);
 				socket.receive(packet);
@@ -123,24 +127,24 @@ class ReceiverUDP extends Thread{
 				PacketUDP p1 = (PacketUDP) in.readObject();
 				in.close();
 
-				//System.out.println("Recieved packetUDP\n");
 			   
 
-				//	Handle the PacketUDP
+				//	tratamento do pacote UDP
 				if(p1.getPackettype()==1){
-					//System.out.println("Subscribe");
 					if(!coord.FFSExists(address,port)){
 						try{
 							StringBuilder sb = new StringBuilder();
 							sb.append("Subscribe");
 							sb.append(address.getHostAddress());
 							pass = new String(sb);
-							//sb.append(":").append(port);
-							//hash!!!
+
+							//hash da password
 							MessageDigest digest = MessageDigest.getInstance("SHA-256");
 							byte[] hash = digest.digest(pass.getBytes());
 
+							//confirmação se a password está correta
 							if(Arrays.equals(p1.getChunk(),hash)){
+								//adição do FFS
 								int ns = this.coord.addServer(address,port);
 								//System.out.println("\tPassword accepted\nNumber of servers: " + this.coord.getNumberFFS());
 								System.out.println("\tFFS subscribed\nNumber of servers: " + ns);
@@ -209,7 +213,7 @@ class ReceiverUDP extends Thread{
 }
 
 
-
+//Server Socket com controlo de fluxo
 class ParserTCP extends Thread{
 	int tcpport = 8080;
 	int backlog = 50;
@@ -259,16 +263,17 @@ class ParserTCP extends Thread{
 }
 
 
-
+//Sessão que trata da comunicação com o cliente
 class SessionTCP extends Thread{
 	Socket socket;
 	CoordinatorHttpGw coord;
 
-	int ROUNDTRIPTIME = 40;		//tempo que espera por cada pedido de tamanho (em milisegundos)
-	int REQUESTINCREMENT = 30;
+	//Valores que se devem alterar para testes. Estes funcionaram na apresentação
+	int ROUNDTRIPTIME = 40;		//tempo que espera por cada pedido (em milisegundos)
+	int REQUESTINCREMENT = 30;	//tempo que se incrementa a espera por cada pedido (em milisegundos)
 	int TRIES = 4;				//numero de vezes que reenvia o pacote
-	int MAXCHUNKSIZE = 400;	
 	
+	//codigo html de 404
 	String filenotfound = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
 
 
@@ -281,9 +286,10 @@ class SessionTCP extends Thread{
 	}
 
 
-	String httpMethod;
-	String filename;
-	boolean badrequest=false;
+	String httpMethod;			//metodo do http request
+	String filename;			//ficheiro pedido no http request
+	boolean badrequest=false;	//se o http request foi mal feitos
+	//parse da primeira linha do http request
 	private void parseTopHeaderHttpRequest(String line){
 		String[] parts = line.split("\\s+", 3);
 		if (parts.length != 3
@@ -299,6 +305,7 @@ class SessionTCP extends Thread{
 		}
 	}
 
+	//parse das seguintes linhas do http request
 	private void parseCommonHeaderHttpRequest(String line){
 		String[] pair = line.split(":", 2);
 		if (pair.length != 2) {
@@ -308,7 +315,7 @@ class SessionTCP extends Thread{
 
 	public void run(){
 		try{
-			int requestID = coord.getRequestID(); //id of the session -> key for the map of chunks
+			int requestID = coord.getRequestID(); //id da sessão -> chave para mapa de chunkmanagers
 			//purge chunks
 			coord.removeChunkManager(requestID);
 
@@ -326,15 +333,12 @@ class SessionTCP extends Thread{
 	        line = in.readLine();
 	        parseTopHeaderHttpRequest(line);
 
-			//System.out.println("---------------------");
 			line = in.readLine();
 			while (line != null && line.length()>0) {
-				//System.out.println(i+": "+line);
 				parseCommonHeaderHttpRequest(line);
 				line = in.readLine();
 				
 			}
-			//System.out.println("---------------------");
 
 			
 
@@ -343,16 +347,16 @@ class SessionTCP extends Thread{
 				out.write("HTTP/1.1 400 Bad Request\r\n\r\n");
 				out.write("Connection: Closed");
 			}
-			else if(!httpMethod.equals("GET")){
+			else if(!httpMethod.equals("GET")){		//Não é um GE?
 				out.write("HTTP/1.1 501 Not Implemented\r\n\r\n");
 				out.write("Connection: Closed");
 			}
 			else{
-
+				//formato da data
 				SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:Ss z", Locale.ENGLISH);
 				
+				//nome do ficheiro requirido
 				String str = new String(filename);
-				//String str = new String("index.html");
 
 				PacketUDP p1 = new PacketUDP(3,requestID,0,str.getBytes());
 				try{
@@ -360,6 +364,7 @@ class SessionTCP extends Thread{
 					int size = 0;
 					int aux=0;
 					
+					//Criação do chunkmanager e adição ao mapa
 					ChunkManager chunk1 = new ChunkManager(str, 0);
 					coord.addChunkManager(requestID,chunk1);
 									
@@ -381,7 +386,7 @@ class SessionTCP extends Thread{
 						aux=0;
 						boolean downloadcomplete=false;
 						p1.setPackettype(4);
-						while(!downloadcomplete && aux<(TRIES*15)){		//TRIES*6 because we know the file is there, but the FFServers can go down
+						while(!downloadcomplete && aux<(TRIES*15)){		//TRIES*15 because we know the file is there, but the FFServers can go down
 
 							//request file chunks
 							System.out.println("Requested Chunks");
@@ -434,19 +439,10 @@ class SessionTCP extends Thread{
 				}
 			}
 
-			/*
- 			String res = "HTTP/1.0 200 OK\n"
-				+ "Server: HTTP server/0.1\n"
-				+ "Date: "+dateFormat.format(new java.util.Date())+"\n"
-		   		+ "Content-type: text/html; charset=UTF-8\n"
-				+ "Content-Length: 38\n\n"
-				+ "<html><body>OK</body></html>";
-			*/
+
 			System.out.println("Http Response sent");
 			out.flush();
 
-
-			//purge chunks
 
 			socket.shutdownOutput();
 			socket.shutdownInput();
@@ -457,6 +453,7 @@ class SessionTCP extends Thread{
 		}
 
 
+		//Incremento do máximo de threads
 		this.coord.threadLock.lock();
 		try{
 			//System.out.println("Thread dismantled");
@@ -467,7 +464,4 @@ class SessionTCP extends Thread{
 		}
 	}
 
-	public boolean isText(String m){
-		return m.contains("text");
-	}
 }

@@ -24,36 +24,45 @@ import java.io.OutputStream;
 
 
 public class CoordinatorHttpGw {
-	int MAXCHUNKSIZE=400;
+	int MAXCHUNKSIZE=400;			//Máximo número de bytes por chunk										
 
-	int MAXTHREADS=10;
+	int MAXTHREADS=10;				//Máximo número de threads que podem estar ativas de uma vez para sessões tcp + lock e condition
 	ReentrantLock threadLock = new ReentrantLock();
 	Condition threadCondition = threadLock.newCondition();
 
 
-	ReentrantLock socketWriteLock = new ReentrantLock();
-	DatagramSocket socket;
+	DatagramSocket socket;			//socket udp para que a thread ReceiverUDP possa ler do socket e as threads SessionTCP possam enviar pacotes
+	ReentrantLock socketWriteLock = new ReentrantLock();		//lock para que apenas uma thread SessionTCP possa ecrever de cada vez
 
-	//reentrant lock for table manage
-	HashMap<String, FFSInfo> ffsTable = new HashMap<String, FFSInfo>();
-	int numberFFS=0; //number of FFServers
-	ReentrantLock ffsLock = new ReentrantLock();
+
+	HashMap<String, FFSInfo> ffsTable = new HashMap<String, FFSInfo>();	//tabela com a os FFServers. A chave é a concatenação do ip + porta
+	int numberFFS=0; 													//numero de FFServers que estão subscritos
+	ReentrantLock ffsLock = new ReentrantLock();						//lock para o acesso concorrente ao mapa
 	
 
-	ReentrantLock requestIDLock = new ReentrantLock();
-	int requestID=0;	//number of the request -> key for the chunkmanagers map/list
-	int MAXREQUESTID=2147483647;		//não é preciso haver controlo de ids porque não vai haver colisão
+	int requestID=0;				//numero da proxima sessãoTCP 	-> é usado para o mapa de chunkmanagers
+	int MAXREQUESTID=2147483647;	//numero máximo de requestID 	->não é preciso haver controlo de ids porque não vai haver colisão
+	ReentrantLock requestIDLock = new ReentrantLock();					//lock para que apenas uma sessãotCP possa pedir o número de cada vez
 
-	HashMap<Integer, ChunkManager> chunkmanagers = new HashMap<Integer, ChunkManager>();
 
+	HashMap<Integer, ChunkManager> chunkmanagers = new HashMap<Integer, ChunkManager>(); 	//mapa com os chunkManagers de cada ficheiro
+
+	//Função para criar o objeto CoordinatorHttpGw
 	public CoordinatorHttpGw(DatagramSocket s){
 		this.socket=s;
 	}
 
+	//Função que retorna o socket
 	public DatagramSocket getSocket(){
 		return this.socket;
 	}
 
+
+	//Função que adiciona um FFS ao mapa:
+	// 1.Lock ao mapa
+	// 2.Criação da entrada
+	// 3.Inserção no mapa, incremento do numero de servidores e retorno do mesmo
+	// 4.Unlock ao mapa
 	public int addServer(InetAddress i, int p){
 		this.ffsLock.lock();
 		try{
@@ -67,6 +76,12 @@ public class CoordinatorHttpGw {
 		}
 	}
 
+
+	//Função que remove um FFS ao mapa:
+	// 1.Lock ao mapa
+	// 2.Criação da chave do servidor
+	// 3.Remoção so mapa, decremento do numero de servidores e retorno do mesmo
+	// 4.Unlock ao mapa
 	public int removeServer(InetAddress i, int p){
 		this.ffsLock.lock();
 		try{
@@ -79,6 +94,11 @@ public class CoordinatorHttpGw {
 		}
 	}
 
+
+	//Função que retorna o numero de FFS:
+	// 1.Lock ao mapa
+	// 2.Retorno do numero de FFS
+	// 4.Unlock ao mapa
 	public int getNumberFFS(){
 		this.ffsLock.lock();
 		try{
@@ -88,6 +108,30 @@ public class CoordinatorHttpGw {
 		}
 	}
 
+
+
+	//Função que retorna true se o FFS existe e false se não existe:
+	// 1.Criação da chave do FFS
+	// 2.Lock ao mapa de FFS
+	// 3.Retorno do Contains do mapa
+	// 3.Unlock ao mapa de FFS
+	public boolean FFSExists(InetAddress i, int p){
+		String key=i.getHostAddress()+String.valueOf(p);
+		this.ffsLock.lock();
+		try{
+			return this.ffsTable.containsKey(key);
+		}finally{
+			this.ffsLock.unlock();
+		}
+	}
+
+
+
+
+	//Função que envia um pacote p1 por UDP ao servidor com ip=ipAddress e a porta=port:
+	// 1.Lock ao socket
+	// 2.Envio do pacote
+	// 3.Unlock do socket
 	public void sendPacket(PacketUDP p1, InetAddress ipAddress, int port){
 		this.socketWriteLock.lock();
 		try{
@@ -113,7 +157,12 @@ public class CoordinatorHttpGw {
 
 
 
-	//Colocar locks
+	
+	//Função que escolhe um FFS aleatório e chama a função sendPacket para enviar o pacote:
+	// 1.Lock ao mapa de FFS
+	// 2.Escolha aleatória do servidor
+	// 3.Chamada da função sendPacket
+	// 4.Unlock ao mapa de FFS
 	public void sendPacketRandomFFS(PacketUDP p1) throws IllegalArgumentException{
 		this.ffsLock.lock();
 		try{
@@ -134,6 +183,11 @@ public class CoordinatorHttpGw {
 	}
 
 
+	//Função que retorna o id de sessão à SessionTCP:
+	// 1.Lock ao requestID
+	// 2.Retorno do requestID
+	// 3.Se o requestID for menor que o número máximo, o requestID é incrementado, se não é colocado a 0
+	// 4.Unlock ao requestID
 	public int getRequestID(){
 		this.requestIDLock.lock();
 		try{
@@ -149,28 +203,36 @@ public class CoordinatorHttpGw {
 
 
 
-//no need for locks because only the tcp session reads and the udp receiver writes
+	//Função que adiciona um chunk manager ao mapa  de chunkmanagers
 	public void addChunkManager(int reqID, ChunkManager c){
 		this.chunkmanagers.put(reqID,c);
 	}
+	//Função que adiciona o tamanho e a metadata a um chunkmanager
 	public void setChunkManagerSizeAndMetadata(int reqID, int s, String m){
 		this.chunkmanagers.get(reqID).setSizeAndMetadata(s,m);
 	}
 
+	//Função que retorna o chunkmanager de uma sessão
 	public ChunkManager getChunkManager(int reqID){
 		return this.chunkmanagers.get(reqID);
 	}
+	//Função que remove o chunkmanager de uma sessão
 	public void removeChunkManager(int reqID){
 		this.chunkmanagers.remove(reqID);
 	}
 
+	//Função que retorna o tamanho do ficheiro que vai ser/está guardado no chunkmanager
 	public int getChunkManagerSize(int reqID){
 		return this.chunkmanagers.get(reqID).getSize();
 	}
+	//Função que retorna a metadata do ficheiro que está guardado no chunkmanager
 	public String getChunkManagerMetadata(int reqID){
 		return this.chunkmanagers.get(reqID).getMetadata();
 	}
 
+
+	//Função que cria espaço para os chunks no chunkmanager
+	// 1. Enquanto o tamanho atual (countsize) for menor que o tamanho do ficheiro tem de se colocar espaço para mais um chunk
 	public void createChunksSpace(int reqID){
 		int size = this.chunkmanagers.get(reqID).getSize();
 		int key=0, countsize=0;
@@ -183,6 +245,12 @@ public class CoordinatorHttpGw {
 		}
 	}
 
+
+	//Função que pede os chunks do ficheiro e retorna true se os chunks já chegaram todos, false se ainda não chegaram
+	// 1. Para cada entrada no mapa de chunks que está guardado no chunkmanager erifica-se se a variavel de bytes está a null
+	// 2. Se estiver é alterado o pacote que é recebido nos argumentos para indicar qual é o d do chunk que falta
+	// 3. o chunk é pedido
+	// 4. Retorna-se se foi pedido algum chunk ou não
 	public boolean requestChunks(int reqID, PacketUDP p1){
 		boolean complete = true;
 		//int size=this.chunkmanagers.get(reqID).getSize();
@@ -198,20 +266,18 @@ public class CoordinatorHttpGw {
 	}
 
 
+
+	//Função que coloca um chunk no chunkmanager
+	// 1. se o chunkmanager com o id de sessão existir coloca-se lá o chunk
 	public void setChunk(int reqID, int chunkid, byte[] bytes){
 		if(this.chunkmanagers.get(reqID)!=null)
 			this.chunkmanagers.get(reqID).setChunk(chunkid,bytes);
 	}
 
 
-	public void getChunksToSocketAsString(int reqID, PrintWriter out){
-		for (Map.Entry<Integer,  byte[]> chunk: this.chunkmanagers.get(reqID).getEntrySetChunks()) {
-			System.out.println(new String(chunk.getValue()));
-			out.write(new String(chunk.getValue()));
-		}
-	}
 
-
+	//Função que escreve no OutputStream do socket os bytes de cada chunk
+	// 1. Para cada MapEntry escreve-se os chunks no out
 	public void getChunksToSocketAsBytes(int reqID, OutputStream out){
 		try{
 			for (Map.Entry<Integer,  byte[]> chunk: this.chunkmanagers.get(reqID).getEntrySetChunks()) {
@@ -224,11 +290,4 @@ public class CoordinatorHttpGw {
 	}
 	
 
-	
-
-
-	public boolean FFSExists(InetAddress i, int p){
-		String key=i.getHostAddress()+String.valueOf(p);
-		return this.ffsTable.containsKey(key);
-	}
 }

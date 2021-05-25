@@ -1,9 +1,9 @@
 import java.io.Serializable;
 
 
-// Size of the packet should be <= 512bytes so it's not fragmented
-// after some tests we discovered that the byte array should have 400bytes tops
-// if its a password, it has less than 400bytes
+// o tamanho do packote em bytes deve ser <= 512bytes para não ser fragmentado
+// depois de alguns testes descobrimos que no máximo o array para os chunks deveria ter 400bytes
+// a password depois de feito o hash tem menos que 400bytes
 
 public class PacketUDP implements Serializable{ 
 	private int packettype;	//1-Subscribe|2-Unsubscribe|3-Size|4-Chunk

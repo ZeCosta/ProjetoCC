@@ -45,7 +45,9 @@ import java.time.format.DateTimeFormatter;
 import java.io.File;
 
 
-
+//Objeto para coordenar o reenvio de subscribes
+//Tem um boolan que se estiver a true quando a thread de resubscribe o for ver, envia um pacote de subscrição
+//tem um lock para contro-lo de comcorrencia entre a thread principar e a thread de resubscribe
 class FFSCoordinator {
 	boolean resubscribe;
 	ReentrantLock resubscribeLock = new ReentrantLock();
@@ -68,23 +70,23 @@ class FFSCoordinator {
 
 
 public class FastFileServer{
-  public static int MAXCHUNKSIZE = 400;
-  public static int port;
-  public static String serverIP;
-  public static String myIP;
+  public static int MAXCHUNKSIZE = 400;		//Tamanho máximo de um chunk
+  public static int port;					//porta do servidor
+  public static String serverIP;			//ip do servidor
+  public static String myIP;				//ip do FFS
 
 
-  public static Set<String> fileregister = new HashSet<String>();
+  public static Set<String> fileregister = new HashSet<String>();	//libraria de ficheiros disponiveis
 
   public static String password;
   //public static String passKey;
   
   public static class Resubscribe extends Thread{
-	int RESUBSCRIBETIME = 60;		//in seconds
-  	DatagramSocket ffsSocket;
-	PacketUDP p1;
-	InetAddress ipAddress;
-	int port;
+	int RESUBSCRIBETIME = 60;		//tempo que espera entre cada verificação do boleano no FFSCoordinator (em segundos)
+  	DatagramSocket ffsSocket;		//socker udp
+	PacketUDP p1;					//pacote a enviar
+	InetAddress ipAddress;			//ip do sv
+	int port;						//porta do sv
 	FFSCoordinator coord;
 
 	public Resubscribe(DatagramSocket f,PacketUDP pa,InetAddress ip, int po, FFSCoordinator c){
@@ -95,6 +97,9 @@ public class FastFileServer{
 		this.coord=c;
 	}
 
+	//Dentro de um ciclo espera durante RESUBSCRIBETIME*1000 segundos e verifica o boolean.
+	//Se o boolean estava a true envia o subscribe, se não não envia
+	//coloca o boolean a true
 	public void run(){
 		boolean running = true;
 		while(running){
@@ -128,6 +133,8 @@ public class FastFileServer{
 	}
   }
 
+
+  //Thread associada ao ShutDownHook, para que quando se sai do FFS um unsubscribe é enviado
   public static class Unsubscribe extends Thread {
 	DatagramSocket ffsSocket;
 	PacketUDP p1;
@@ -140,6 +147,7 @@ public class FastFileServer{
 		this.ipAddress=ip; 
 		this.port=po; 
 	}
+
 
 	public void run() {
 		System.out.println("");
@@ -239,95 +247,95 @@ public class FastFileServer{
 
 
 
-		//Sistema de re-login
+		// Sistema de re-login
 		FFSCoordinator coord = new FFSCoordinator();
 		new Resubscribe(ffsSocket,p1.clone(),ipAddress,port,coord).start();
 
 
 
-		//		create unsubscribe package
+
+		// Criação do pacote de cancelamento de subscrição
 		sb = new StringBuilder();
 		sb.append("Unubscribe");
 		sb.append(myIP);
 		password = new String(sb);
 		
-		//hash!!!
+		//hash da password
 		digest = MessageDigest.getInstance("SHA-256");
 		hash = digest.digest(password.getBytes());
 
 
 		p1 = new PacketUDP(2,0,0,hash);
 		
-		
-			Runtime.getRuntime().addShutdownHook(new Unsubscribe(ffsSocket,p1,ipAddress, port));
 
-			Boolean running = true;
-			while (running) {
-				DatagramPacket receivingPacket = new DatagramPacket(receivingDataBuffer,receivingDataBuffer.length);
-				ffsSocket.receive(receivingPacket);
-				coord.setBool(false);
+		// Adição do ShutDowHook
+		Runtime.getRuntime().addShutdownHook(new Unsubscribe(ffsSocket,p1,ipAddress, port));
 
-				try{
-					ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(receivingPacket.getData()));
-					PacketUDP p2 = (PacketUDP) in.readObject();
-					in.close();
+		Boolean running = true;
+		while (running) {
+			//Receção do pacote UDP
+			DatagramPacket receivingPacket = new DatagramPacket(receivingDataBuffer,receivingDataBuffer.length);
+			ffsSocket.receive(receivingPacket);
+			coord.setBool(false);
 
-					String receivedData = new String(receivingPacket.getData());
-					//
-					
+			try{
+				ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(receivingPacket.getData()));
+				PacketUDP p2 = (PacketUDP) in.readObject();
+				in.close();
 
-					String arr = new String(p2.getChunk());
-					
-					//
 
-					if(receivingPacket.getAddress().equals(ipAddress)){
-						if(p2.getPackettype()==3){	// size request
-							System.out.println("->Send filesize+metadata");
-							int filesize=-1;
+				String arr = new String(p2.getChunk());	//arr vai conter o ome do ficheiro
+				
+
+				if(receivingPacket.getAddress().equals(ipAddress)){
+					if(p2.getPackettype()==3){							// pedido de tamanho (e metadata)
+						System.out.println("->Send filesize+metadata");
+						int filesize=-1;
+						
+						String file = new String(p2.getChunk());
+						String metadata = new String();
+
+						if(fileregister.contains(file)){				//Se contem o ficheiro ir buscar o tamanho e a metadata
+							filesize=getFileSizeNIO(file);
+							metadata=GetFileMetadata(file);
+						}
+
+						//alterar e enviar o pacote
+						p2.setChunkid(filesize);
+						p2.setChunk(metadata.getBytes());
+						out = new ByteArrayOutputStream();
+				   		os = new ObjectOutputStream(out);		
+				   		os.writeObject(p2);
+						sendingDataBuffer = out.toByteArray();
+
+						sendingPacket = new DatagramPacket(sendingDataBuffer,sendingDataBuffer.length,ipAddress, port);
+						ffsSocket.send(sendingPacket);
+
+					}else if(p2.getPackettype()==4){					// pedido de chunk
+						String file = new String(p2.getChunk());
+						System.out.println("->Send chunk " +"from "+file+" starting from"+p2.getChunkid());
+						
+
+						if(fileregister.contains(file)){				//Se contem o ficheiro ir buscar o chunk e envia-lo
 							
-							String file = new String(p2.getChunk());
-							String metadata = new String();
-
-							if(fileregister.contains(file)){
-								filesize=getFileSizeNIO(file);
-								metadata=GetFileMetadata(file);
-							}
-
-							p2.setChunkid(filesize);
-							p2.setChunk(metadata.getBytes());
+							p2.setChunk(getFileChunk(file,p2.getChunkid()));
 							out = new ByteArrayOutputStream();
 					   		os = new ObjectOutputStream(out);		
 					   		os.writeObject(p2);
 							sendingDataBuffer = out.toByteArray();
 
 							sendingPacket = new DatagramPacket(sendingDataBuffer,sendingDataBuffer.length,ipAddress, port);
-							ffsSocket.send(sendingPacket);
+							ffsSocket.send(sendingPacket);							
 
-						}else if(p2.getPackettype()==4){	// chunk request
-							String file = new String(p2.getChunk());
-							System.out.println("->Send chunk " /*+"for "+p2.getPacketid() + " " */+"from "+file+" starting from"+p2.getChunkid());
-							
-							//System.out.println(file);
-							if(fileregister.contains(file)){
-								
-								p2.setChunk(getFileChunk(file,p2.getChunkid()));
-								out = new ByteArrayOutputStream();
-						   		os = new ObjectOutputStream(out);		
-						   		os.writeObject(p2);
-								sendingDataBuffer = out.toByteArray();
+						}
 
-								sendingPacket = new DatagramPacket(sendingDataBuffer,sendingDataBuffer.length,ipAddress, port);
-								ffsSocket.send(sendingPacket);							
+					}else System.out.println("Ignoring packet, Operation not recognised");
 
-							}
-
-						}else System.out.println("Ignoring packet, Operation not recognised");
-
-					}else System.out.println("Not the HttpGw");
-				}catch(ClassNotFoundException e){
-		  			e.printStackTrace();
-				}
+				}else System.out.println("Not the HttpGw");
+			}catch(ClassNotFoundException e){
+	  			e.printStackTrace();
 			}
+		}
 		
 	}
 	catch(SocketException e) {
@@ -368,10 +376,10 @@ public class FastFileServer{
 		return null;
 	}
 
+
+	//Função que retorna o tamanho do ficheiro em bytes
 	public static int getFileSizeNIO(String fileName) {
-
 		Path path = Paths.get(fileName);
-
 		int bytes = -1;
 		try {
 			// size of a file (in bytes)
@@ -379,13 +387,12 @@ public class FastFileServer{
 		}catch (IOException e) {
 			e.printStackTrace();
 		}
-
 		return bytes;
 	}
 
 
+	//Função que retorna um chunk do ficheiro a começar em offset*MAXCHUNKSIZE
 	public static byte[] getFileChunk(String fileName, int offset) {
-
 		Path path = Paths.get(fileName);
 
 		int size = getFileSizeNIO(fileName);
@@ -398,13 +405,12 @@ public class FastFileServer{
 				e.printStackTrace();
 			}
 		}
-
 		return chunk;
 	}
 
 
 	public static SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss z", Locale.ENGLISH);
-	//String of metadata
+	//Função que retorna a metadata do ficheiro
 	public static String GetFileMetadata(String filename){
 		StringBuilder sb = new StringBuilder();
 
@@ -416,8 +422,6 @@ public class FastFileServer{
 			sb.append("Last-Modified: ");
 			FileTime fileTime = attr.lastModifiedTime();
 			sb.append(format.format(fileTime.toMillis()));
-			//System.out.println("lastModifiedTime: " + formatDateTime(fileTime));
-			//System.out.println("lastModifiedTime: " + format.format(fileTime.toMillis()));
 			sb.append("\n");
 			
 			//System.out.println("size: " + attr.size());
@@ -432,19 +436,7 @@ public class FastFileServer{
 		}catch (IOException e) {
 			e.printStackTrace();
 		}
-		
 		return sb.toString();
 	}
-
-	public static String formatDateTime(FileTime fileTime) {
-		DateTimeFormatter dateformatter = DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:Ss z");
-
-        LocalDateTime localDateTime = fileTime
-                .toInstant()
-                .atZone(ZoneId.systemDefault())
-                .toLocalDateTime();
-
-        return localDateTime.format(dateformatter);
-    }
 
 }

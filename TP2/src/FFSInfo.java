@@ -5,10 +5,11 @@ import java.util.HashSet;
 public class FFSInfo {
 	InetAddress ip;
 	int port;
+
+	//Variaveis pensadas para o HttpGw poder dar Unsub nos FFS que não respondiam o suficiente
 	int requested=0;
 	int received=0;
 
-	//HashSet<String> files = new HashSet<String>();
 
 	public FFSInfo(InetAddress i, int p){
 		this.ip=i;
@@ -22,20 +23,6 @@ public class FFSInfo {
 		return this.port;
 	}
 
-	public boolean tooManyMisses(){
-		return (this.received/this.requested)<75;
-	}
-
-
-	public void addRequested(){
-		this.requested+=1;
-	}
-	public void addReceived(){
-		this.received+=1;
-	}
-
-
-
 	public void setIp(InetAddress i){
 		this.ip=i;
 	}
@@ -46,4 +33,24 @@ public class FFSInfo {
 	public boolean equals(FFSInfo f){
 		return this.getIp().equals(f.getIp());// && this.getPort()==f.getPort();
 	}
+
+
+
+
+
+
+
+	//Não utilizado
+
+	public boolean tooManyMisses(){
+		return (this.received/this.requested)<75;
+	}
+
+	public void addRequested(){
+		this.requested+=1;
+	}
+	public void addReceived(){
+		this.received+=1;
+	}
+
 }
