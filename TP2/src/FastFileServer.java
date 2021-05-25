@@ -175,6 +175,7 @@ public class FastFileServer{
 		fileregister.add("enunciado.pdf");
 		fileregister.add("images.png");
 		fileregister.add("audio.mp4");
+		fileregister.add("audio2.mp4");
 		fileregister.add("TestesDeSockets/PacketTest.java");
 		
 
@@ -304,7 +305,7 @@ public class FastFileServer{
 
 						}else if(p2.getPackettype()==4){	// chunk request
 							String file = new String(p2.getChunk());
-							//System.out.println("->Send chunk from "+file);
+							System.out.println("->Send chunk " /*+"for "+p2.getPacketid() + " " */+"from "+file+" starting from"+p2.getChunkid());
 							
 							//System.out.println(file);
 							if(fileregister.contains(file)){

@@ -265,8 +265,8 @@ class SessionTCP extends Thread{
 	CoordinatorHttpGw coord;
 
 	int ROUNDTRIPTIME = 40;		//tempo que espera por cada pedido de tamanho (em milisegundos)
-	int REQUESTINCREMENT = 40;
-	int TRIES = 3;				//numero de vezes que reenvia o pacote
+	int REQUESTINCREMENT = 30;
+	int TRIES = 4;				//numero de vezes que reenvia o pacote
 	int MAXCHUNKSIZE = 400;	
 	
 	String filenotfound = "<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
@@ -365,11 +365,11 @@ class SessionTCP extends Thread{
 									
 					while(size==0){
 						coord.sendPacketRandomFFS(p1);
-						Thread.sleep(this.ROUNDTRIPTIME);
+						Thread.sleep(this.ROUNDTRIPTIME+(aux*this.REQUESTINCREMENT));
 						//getsizeof file
 						size = this.coord.getChunkManagerSize(p1.getPacketid());
 						aux+=1;
-						if(aux==this.TRIES)size=-1;
+						if(aux==this.TRIES*5)size=-1;
 					}
 					// Request chunks if size>0
 					System.out.println("Saiu do ciclo. Size="+size);
@@ -381,13 +381,14 @@ class SessionTCP extends Thread{
 						aux=0;
 						boolean downloadcomplete=false;
 						p1.setPackettype(4);
-						while(!downloadcomplete && aux<(TRIES*6)){		//TRIES*6 because we know the file is there, but the FFServers can go down
+						while(!downloadcomplete && aux<(TRIES*15)){		//TRIES*6 because we know the file is there, but the FFServers can go down
 
 							//request file chunks
 							System.out.println("Requested Chunks");
 							if(this.coord.requestChunks(requestID, p1)){
 								downloadcomplete=true;
 							}else{
+								System.out.println(this.ROUNDTRIPTIME+(aux*this.REQUESTINCREMENT));
 								Thread.sleep(this.ROUNDTRIPTIME+(aux*this.REQUESTINCREMENT));
 							}
 							aux+=1;
