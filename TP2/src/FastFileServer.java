@@ -175,6 +175,8 @@ public class FastFileServer{
 		fileregister.add("enunciado.pdf");
 		fileregister.add("images.png");
 		fileregister.add("audio.mp4");
+		fileregister.add("TestesDeSockets/PacketTest.java");
+		
 
 		myIP=myip();
 		System.out.println("My ip: "+ myIP);
