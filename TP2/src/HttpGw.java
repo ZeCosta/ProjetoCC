@@ -393,7 +393,7 @@ class SessionTCP extends Thread{
 							if(this.coord.requestChunks(requestID, p1)){
 								downloadcomplete=true;
 							}else{
-								System.out.println(this.ROUNDTRIPTIME+(aux*this.REQUESTINCREMENT));
+								//System.out.println(this.ROUNDTRIPTIME+(aux*this.REQUESTINCREMENT));
 								Thread.sleep(this.ROUNDTRIPTIME+(aux*this.REQUESTINCREMENT));
 							}
 							aux+=1;
