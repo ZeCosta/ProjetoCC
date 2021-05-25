@@ -265,7 +265,7 @@ class SessionTCP extends Thread{
 	CoordinatorHttpGw coord;
 
 	int ROUNDTRIPTIME = 40;		//tempo que espera por cada pedido de tamanho (em milisegundos)
-	int REQUESTINCREMENT = 20;
+	int REQUESTINCREMENT = 40;
 	int TRIES = 3;				//numero de vezes que reenvia o pacote
 	int MAXCHUNKSIZE = 400;	
 	
@@ -381,7 +381,7 @@ class SessionTCP extends Thread{
 						aux=0;
 						boolean downloadcomplete=false;
 						p1.setPackettype(4);
-						while(!downloadcomplete && aux<(TRIES*4)){		//TRIES*2 because we know the file is there, but the FFServers can go down
+						while(!downloadcomplete && aux<(TRIES*6)){		//TRIES*6 because we know the file is there, but the FFServers can go down
 
 							//request file chunks
 							System.out.println("Requested Chunks");

@@ -173,6 +173,8 @@ public class FastFileServer{
 		fileregister.add("frontpage.html");
 		fileregister.add("twochunkfile.html");
 		fileregister.add("enunciado.pdf");
+		fileregister.add("images.png");
+		fileregister.add("audio.mp4");
 
 		myIP=myip();
 		System.out.println("My ip: "+ myIP);
